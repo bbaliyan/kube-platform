@@ -5,7 +5,7 @@ metadata:
 spec:
   sources:
     - inLine: |
-        {{ .Values.trustedCaPemB64 | b64dec | nindent 8 }}
+        {{ .Values.trustedCaPemB64 | b64dec | trim | nindent 8 }}
     - useDefaultCAs: true
   target:
     configMap:
