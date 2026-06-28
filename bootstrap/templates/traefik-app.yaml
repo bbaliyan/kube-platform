@@ -1,0 +1,58 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://helm.traefik.io/traefik
+    chart: traefik
+    targetRevision: "41.0.0"
+    helm:
+      values: |
+        deployment:
+          kind: DaemonSet
+
+        service:
+          type: LoadBalancer
+          spec:
+            externalTrafficPolicy: Local
+
+        ports:
+          web:
+            port: 8000
+            expose:
+              default: true
+            exposedPort: 80
+            protocol: TCP
+          websecure:
+            port: 8443
+            expose:
+              default: true
+            exposedPort: 443
+            protocol: TCP
+
+        api:
+          dashboard: true
+
+        additionalArguments:
+          - "--providers.kubernetescrd.allowCrossNamespace=true"
+
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            memory: 128Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: traefik
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
