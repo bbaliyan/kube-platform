@@ -1,0 +1,20 @@
+# Sparse server-side apply patch — Argo CD takes ownership of only the resources
+# field. K3s deploys CoreDNS as raw manifests (not via HelmChart); HelmChartConfig
+# has no effect. K3s only re-applies manifests when the source file changes on disk,
+# so Argo CD's selfHeal wins and K3s does not revert this.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coredns
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: coredns
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
