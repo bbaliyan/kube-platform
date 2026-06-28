@@ -1,0 +1,5 @@
+apiVersion: v2
+name: ingress-tls
+description: Wildcard TLS Certificate and Traefik default TLSStore using platform-issuer.
+type: application
+version: 0.1.0

@@ -1,0 +1,16 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-tls
+  namespace: traefik
+spec:
+  secretName: wildcard-tls
+  issuerRef:
+    name: platform-issuer
+    kind: ClusterIssuer
+  commonName: "*.{{ .Values.clusterFqdnSuffix }}"
+  dnsNames:
+    - "*.{{ .Values.clusterFqdnSuffix }}"
+    - "{{ .Values.clusterFqdnSuffix }}"
+  duration: 2160h
+  renewBefore: 360h

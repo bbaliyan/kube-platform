@@ -1,0 +1,28 @@
+{{- if .Values.clusterFqdnSuffix }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ingress-tls
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.platformRepoURL }}
+    targetRevision: {{ .Values.platformRevision }}
+    path: platform/ingress-tls
+    helm:
+      parameters:
+        - name: clusterFqdnSuffix
+          value: {{ .Values.clusterFqdnSuffix | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: traefik
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+{{- end }}
