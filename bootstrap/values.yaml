@@ -1,0 +1,10 @@
+# Values injected by the kube-node platform Application helm.parameters block.
+# Defaults here are only used when rendering locally (e.g. helm template for validation).
+platformRepoURL: ""
+platformRevision: main
+certMode: selfsigned
+clusterFqdnSuffix: ""
+trustedCaPemB64: ""
+workloadsRepoURL: ""
+workloadsRevision: main
+workloadsPath: "."

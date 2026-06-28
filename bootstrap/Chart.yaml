@@ -1,0 +1,5 @@
+apiVersion: v2
+name: kube-platform-bootstrap
+description: App-of-apps bootstrap chart for kube-platform. Rendered by the kube-node platform Application; creates child Applications for all platform services.
+type: application
+version: 0.1.0
