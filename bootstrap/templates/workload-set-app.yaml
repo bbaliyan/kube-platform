@@ -1,0 +1,24 @@
+{{- if .Values.workloadsRepoURL }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: workload-set
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.workloadsRepoURL }}
+    targetRevision: {{ .Values.workloadsRevision }}
+    path: {{ .Values.workloadsPath }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+{{- end }}

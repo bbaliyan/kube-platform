@@ -1,0 +1,14 @@
+apiVersion: trust.cert-manager.io/v1alpha1
+kind: Bundle
+metadata:
+  name: platform-trust-bundle
+spec:
+  sources:
+    - inLine: |
+        {{ .Values.trustedCaPemB64 | b64dec | nindent 8 }}
+    - useDefaultCAs: true
+  target:
+    configMap:
+      key: ca-bundle.crt
+    namespaceSelector:
+      matchLabels: {}

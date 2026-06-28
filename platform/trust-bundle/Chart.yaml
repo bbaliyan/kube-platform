@@ -1,0 +1,5 @@
+apiVersion: v2
+name: trust-bundle
+description: Distributes the consumer CA (and system CAs) to all namespaces via a trust-manager Bundle.
+type: application
+version: 0.1.0
