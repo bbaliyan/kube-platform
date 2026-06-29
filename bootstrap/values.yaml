@@ -8,3 +8,21 @@ trustedCaPemB64: ""
 workloadsRepoURL: ""
 workloadsRevision: main
 workloadsPath: "."
+
+# Secret store wiring for private workload repo access.
+# Leave secretStoreType empty for clusters with no private repos — ESO is not deployed.
+secretStoreType: ""   # vault | aws-ssm | azure-keyvault
+
+# Vault backend (secretStoreType: vault)
+vaultAddr: ""         # e.g. http://192.168.1.20:8200
+vaultRole: ""         # Vault Kubernetes auth role bound to ESO's service account
+vaultSecretPath: ""   # Full KV v2 path e.g. secret/data/kube/cluster-1/repo-cred
+
+# AWS SSM backend (secretStoreType: aws-ssm)
+awsRegion: ""         # e.g. eu-west-1
+ssmParameterPath: ""  # e.g. /kube/cluster-1/repo-cred
+
+# Azure Key Vault backend (secretStoreType: azure-keyvault)
+azureKeyVaultUrl: ""  # e.g. https://my-kv.vault.azure.net
+azureTenantId: ""
+azureSecretName: ""   # Name of the Key Vault secret

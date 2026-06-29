@@ -1,0 +1,46 @@
+{{- if .Values.secretStoreType }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd-repo-creds
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.platformRepoURL | quote }}
+    targetRevision: {{ .Values.platformRevision | quote }}
+    path: platform/argocd-repo-creds
+    helm:
+      parameters:
+        - name: secretStoreType
+          value: {{ .Values.secretStoreType | quote }}
+        - name: workloadsRepoURL
+          value: {{ .Values.workloadsRepoURL | quote }}
+        - name: vaultAddr
+          value: {{ .Values.vaultAddr | quote }}
+        - name: vaultRole
+          value: {{ .Values.vaultRole | quote }}
+        - name: vaultSecretPath
+          value: {{ .Values.vaultSecretPath | quote }}
+        - name: awsRegion
+          value: {{ .Values.awsRegion | quote }}
+        - name: ssmParameterPath
+          value: {{ .Values.ssmParameterPath | quote }}
+        - name: azureKeyVaultUrl
+          value: {{ .Values.azureKeyVaultUrl | quote }}
+        - name: azureTenantId
+          value: {{ .Values.azureTenantId | quote }}
+        - name: azureSecretName
+          value: {{ .Values.azureSecretName | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+{{- end }}
