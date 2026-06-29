@@ -2,7 +2,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: ingress-tls
+  name: observability-ingress-routes
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "2"
@@ -11,16 +11,14 @@ spec:
   source:
     repoURL: {{ .Values.platformRepoURL }}
     targetRevision: {{ .Values.platformRevision }}
-    path: platform/ingress-tls
+    path: platform/observability-ingress-routes
     helm:
       parameters:
         - name: clusterFqdnSuffix
           value: {{ .Values.clusterFqdnSuffix | quote }}
-        - name: issuerName
-          value: {{ .Values.pkiIssuerName | quote }}
   destination:
     server: https://kubernetes.default.svc
-    namespace: traefik
+    namespace: prometheus
   syncPolicy:
     automated:
       prune: true

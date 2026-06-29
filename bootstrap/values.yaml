@@ -3,6 +3,9 @@
 platformRepoURL: ""
 platformRevision: main
 certMode: selfsigned
+storageProvisionerType: ""      # aws-ebs | democratic-csi | longhorn — empty disables
+storageProvisionerRepoURL: ""   # defaults to platformRepoURL when empty
+storageProvisionerRevision: "main"
 clusterFqdnSuffix: ""
 trustedCaPemB64: ""
 workloadsRepoURL: ""
@@ -12,6 +15,11 @@ workloadsPath: "."
 # Secret store wiring for private workload repo access.
 # Leave secretStoreType empty for clusters with no private repos — ESO is not deployed.
 secretStoreType: ""   # vault | aws-ssm | azure-keyvault
+
+# URL prefix used by Argo CD repo-creds for SSH credential template matching.
+# All repos whose URL starts with this prefix will use the fetched SSH key.
+# Example: "git@git.example.com:" covers every repo on that host.
+repoCredsUrlPrefix: ""
 
 # Vault backend (secretStoreType: vault)
 vaultAddr: ""         # e.g. http://192.168.1.20:8200
@@ -26,3 +34,22 @@ ssmParameterPath: ""  # e.g. /kube/cluster-1/repo-cred
 azureKeyVaultUrl: ""  # e.g. https://my-kv.vault.azure.net
 azureTenantId: ""     # e.g. 00000000-0000-0000-0000-000000000000
 azureSecretName: ""   # Name of the Key Vault secret
+
+# ClusterIssuer name used for all cert-manager Certificate resources in this cluster.
+# Must match what workloads (ng-workloads) reference in their Certificate issuerRef.
+# Default "platform-issuer" suits the selfsigned mode; set to "org-ca-issuer" for byo.
+pkiIssuerName: platform-issuer
+
+# BYO CA (certMode: byo) — paths to the CA cert, chain, and key in the secret store.
+# tls.crt is built as cert+chain so cert-manager propagates the full intermediate
+# chain into every issued cert, preventing PartialChain errors on TLS clients.
+# AWS SSM: three separate SecureString parameters.
+ssmByoCaCertPath: ""    # signing cert (must match the key)
+ssmByoCaChainPath: ""   # parent chain above the signing cert
+ssmByoCaKeyPath: ""     # private key
+# Vault: one KV v2 secret with cert, chain, and key properties.
+vaultByoCaPath: ""      # e.g. secret/data/kube/cluster-1/byo-ca
+# Azure Key Vault: three separate secrets.
+azureByoCaCertName: ""
+azureByoCaChainName: ""
+azureByoCaKeyName: ""

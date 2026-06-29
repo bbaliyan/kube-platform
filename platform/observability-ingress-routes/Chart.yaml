@@ -1,0 +1,5 @@
+apiVersion: v2
+name: observability-ingress-routes
+description: Traefik IngressRoutes for Grafana and Prometheus UIs.
+type: application
+version: 0.1.0

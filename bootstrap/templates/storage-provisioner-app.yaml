@@ -1,0 +1,25 @@
+{{- if .Values.storageProvisionerType }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: storage-provisioner
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.storageProvisionerRepoURL | default .Values.platformRepoURL }}
+    targetRevision: {{ .Values.storageProvisionerRevision }}
+    path: platform/storage-provisioner/{{ .Values.storageProvisionerType }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+{{- end }}

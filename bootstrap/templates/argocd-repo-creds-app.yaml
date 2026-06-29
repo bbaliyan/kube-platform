@@ -16,8 +16,8 @@ spec:
       parameters:
         - name: secretStoreType
           value: {{ .Values.secretStoreType | quote }}
-        - name: workloadsRepoURL
-          value: {{ .Values.workloadsRepoURL | quote }}
+        - name: repoCredsUrlPrefix
+          value: {{ .Values.repoCredsUrlPrefix | quote }}
         - name: vaultAddr
           value: {{ .Values.vaultAddr | quote }}
         - name: vaultRole

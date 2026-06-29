@@ -1,3 +1,4 @@
 # trustedCaPemB64: base64-encoded PEM certificate(s) to distribute.
 # Populated from the trustedCaPemB64 helm parameter passed by cloud-init.
 trustedCaPemB64: ""
+caChainSecretName: ""

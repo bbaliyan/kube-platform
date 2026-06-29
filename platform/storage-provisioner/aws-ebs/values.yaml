@@ -1,0 +1,14 @@
+# Values passed to the aws-ebs-csi-driver dependency chart.
+# See https://github.com/kubernetes-sigs/aws-ebs-csi-driver/blob/master/charts/aws-ebs-csi-driver/values.yaml
+aws-ebs-csi-driver:
+  controller:
+    replicaCount: 1
+  storageClasses:
+    - name: ebs-gp3
+      annotations:
+        storageclass.kubernetes.io/is-default-class: "true"
+      volumeBindingMode: WaitForFirstConsumer
+      reclaimPolicy: Delete
+      parameters:
+        type: gp3
+        encrypted: "false"

@@ -1,0 +1,13 @@
+# Storage class for Loki, Prometheus, Grafana, and Alertmanager PVCs.
+# Empty string = use the cluster's default storage class (recommended — the
+# storage-provisioner wave sets the appropriate default before this deploys).
+storageClassName: ""
+
+# When set, Traefik IngressRoutes are created for Grafana and Prometheus.
+# Must match the clusterFqdnSuffix used in kube-platform bootstrap.
+clusterFqdnSuffix: ""
+
+# Source repo for the observability-ingress-routes sub-chart.
+# Set by the parent bootstrap Application so all sub-apps come from the same repo.
+platformRepoURL: ""
+platformRevision: main

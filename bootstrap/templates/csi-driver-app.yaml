@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csi-driver
+  namespace: argocd
+  annotations:
+    # Wave 1: requires cert-manager CRDs (wave 0). Installs the cert-manager CSI
+    # driver DaemonSet that mounts per-pod TLS certificates as CSI volumes — used
+    # by ConfigAgent pods for SNI-based TLS passthrough.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager-csi-driver
+    targetRevision: "0.15.0"
+    helm:
+      values: |
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 32Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

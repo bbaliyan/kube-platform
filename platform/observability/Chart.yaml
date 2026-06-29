@@ -1,0 +1,5 @@
+apiVersion: v2
+name: observability
+description: App-of-apps deploying Loki, Alloy, and kube-prometheus-stack with optional Traefik IngressRoutes.
+type: application
+version: 0.1.0

@@ -11,6 +11,28 @@ spec:
     repoURL: {{ .Values.platformRepoURL }}
     targetRevision: {{ .Values.platformRevision }}
     path: platform/pki-issuer/{{ .Values.certMode }}
+    {{- if eq .Values.certMode "byo" }}
+    helm:
+      parameters:
+        - name: issuerName
+          value: {{ .Values.pkiIssuerName | quote }}
+        - name: secretStoreType
+          value: {{ .Values.secretStoreType | quote }}
+        - name: ssmByoCaCertPath
+          value: {{ .Values.ssmByoCaCertPath | quote }}
+        - name: ssmByoCaChainPath
+          value: {{ .Values.ssmByoCaChainPath | quote }}
+        - name: ssmByoCaKeyPath
+          value: {{ .Values.ssmByoCaKeyPath | quote }}
+        - name: vaultByoCaPath
+          value: {{ .Values.vaultByoCaPath | quote }}
+        - name: azureByoCaCertName
+          value: {{ .Values.azureByoCaCertName | quote }}
+        - name: azureByoCaChainName
+          value: {{ .Values.azureByoCaChainName | quote }}
+        - name: azureByoCaKeyName
+          value: {{ .Values.azureByoCaKeyName | quote }}
+    {{- end }}
   destination:
     server: https://kubernetes.default.svc
     namespace: cert-manager

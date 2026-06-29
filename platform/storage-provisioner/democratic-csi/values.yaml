@@ -1,0 +1,3 @@
+# Placeholder values for the democratic-csi provisioner.
+# Populate with driver config (driverConfig, storageClasses, etc.) before use.
+# See https://github.com/democratic-csi/charts

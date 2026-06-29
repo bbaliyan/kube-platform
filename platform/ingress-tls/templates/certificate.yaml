@@ -6,7 +6,7 @@ metadata:
 spec:
   secretName: wildcard-tls
   issuerRef:
-    name: platform-issuer
+    name: {{ .Values.issuerName }}
     kind: ClusterIssuer
   commonName: "*.{{ .Values.clusterFqdnSuffix }}"
   dnsNames:

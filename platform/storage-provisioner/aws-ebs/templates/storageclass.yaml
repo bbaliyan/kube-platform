@@ -1,0 +1,85 @@
+---
+# Ensure the ebs-gp3 class is explicitly marked as the cluster default.
+# This resource is declarative and idempotent; the dependency chart may also
+# create it — ServerSideApply in the Argo CD sync options handles the merge.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+parameters:
+  type: gp3
+  encrypted: "false"
+---
+# Post-install Job that removes the default-class annotation from local-path
+# so that ebs-gp3 becomes the sole default storage class on the cluster.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: local-path-deprioritise
+  namespace: kube-system
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: local-path-deprioritise
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+rules:
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: local-path-deprioritise
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: local-path-deprioritise
+subjects:
+  - kind: ServiceAccount
+    name: local-path-deprioritise
+    namespace: kube-system
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: local-path-deprioritise
+  namespace: kube-system
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "1"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: local-path-deprioritise
+      containers:
+        - name: patch
+          image: bitnami/kubectl:latest
+          command:
+            - kubectl
+            - patch
+            - storageclass
+            - local-path
+            - --type=merge
+            - -p
+            - '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'

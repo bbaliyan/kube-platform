@@ -6,6 +6,11 @@ spec:
   sources:
     - inLine: |
         {{ .Values.trustedCaPemB64 | b64dec | trim | nindent 8 }}
+    {{- if .Values.caChainSecretName }}
+    - secret:
+        name: {{ .Values.caChainSecretName }}
+        key: tls.crt
+    {{- end }}
     - useDefaultCAs: true
   target:
     configMap:

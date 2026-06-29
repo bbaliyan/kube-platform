@@ -1,0 +1,20 @@
+# Name given to the ClusterIssuer. Must match what workloads reference in their
+# Certificate issuerRef. Defaults to org-ca-issuer for ION corp compatibility.
+issuerName: org-ca-issuer
+
+secretStoreType: ""   # vault | aws-ssm | azure-keyvault
+
+# AWS SSM — three separate SecureString parameters (cert, chain, key).
+# tls.crt is constructed as cert+chain so cert-manager propagates the full
+# intermediate chain into every issued cert, preventing PartialChain errors.
+ssmByoCaCertPath: ""    # e.g. .../cert.pem  (signing cert — must match the key)
+ssmByoCaChainPath: ""   # e.g. .../chain.pem (parent chain above the signing cert)
+ssmByoCaKeyPath: ""     # e.g. .../private.pem
+
+# Vault — one KV v2 secret with cert, chain, and key properties
+vaultByoCaPath: ""      # e.g. secret/data/kube/cluster-1/byo-ca
+
+# Azure Key Vault — three separate secrets
+azureByoCaCertName: ""
+azureByoCaChainName: ""
+azureByoCaKeyName: ""

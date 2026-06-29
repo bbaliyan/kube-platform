@@ -1,5 +1,5 @@
 secretStoreType: ""
-workloadsRepoURL: ""
+repoCredsUrlPrefix: ""
 vaultAddr: ""
 vaultRole: ""
 vaultSecretPath: ""

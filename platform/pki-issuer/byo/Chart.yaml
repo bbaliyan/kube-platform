@@ -1,0 +1,5 @@
+apiVersion: v2
+name: pki-issuer-byo
+description: cert-manager ClusterIssuer backed by a BYO intermediate CA delivered via External Secrets.
+type: application
+version: 0.1.0
