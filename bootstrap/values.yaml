@@ -24,5 +24,5 @@ ssmParameterPath: ""  # e.g. /kube/cluster-1/repo-cred
 
 # Azure Key Vault backend (secretStoreType: azure-keyvault)
 azureKeyVaultUrl: ""  # e.g. https://my-kv.vault.azure.net
-azureTenantId: ""
+azureTenantId: ""     # e.g. 00000000-0000-0000-0000-000000000000
 azureSecretName: ""   # Name of the Key Vault secret
