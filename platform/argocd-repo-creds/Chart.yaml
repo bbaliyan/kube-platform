@@ -1,0 +1,5 @@
+apiVersion: v2
+name: argocd-repo-creds
+description: ESO ClusterSecretStore and ExternalSecret for Argo CD private repo access.
+type: application
+version: 0.1.0
