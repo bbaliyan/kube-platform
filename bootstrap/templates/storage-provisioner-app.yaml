@@ -12,6 +12,23 @@ spec:
     repoURL: {{ .Values.storageProvisionerRepoURL | default .Values.platformRepoURL }}
     targetRevision: {{ .Values.storageProvisionerRevision }}
     path: platform/storage-provisioner/{{ .Values.storageProvisionerType }}
+{{- if eq .Values.storageProvisionerType "aws-ebs" }}
+    helm:
+      valuesObject:
+        aws-ebs-csi-driver:
+          controller:
+            # Tags dynamically-provisioned EBS volumes with the owning cluster
+            # (and any operator-supplied tags) so they're identifiable — and
+            # sweepable — if the node is destroyed before the CSI driver gets
+            # a chance to release them via reclaimPolicy: Delete.
+            extraVolumeTags:
+              {{- if .Values.clusterName }}
+              ClusterName: {{ .Values.clusterName | quote }}
+              {{- end }}
+              {{- range $k, $v := .Values.extraTags }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+{{- end }}
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system

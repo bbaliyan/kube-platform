@@ -3,6 +3,8 @@
 platformRepoURL: ""
 platformRevision: main
 certMode: selfsigned
+clusterName: ""                 # raw cluster identifier — used to tag dynamically-provisioned storage
+extraTags: {}                    # arbitrary tags forwarded from node-aws's extra_tags, applied to CSI-provisioned storage
 storageProvisionerType: ""      # aws-ebs | democratic-csi | longhorn — empty disables
 storageProvisionerRepoURL: ""   # defaults to platformRepoURL when empty
 storageProvisionerRevision: "main"
