@@ -90,6 +90,17 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: prometheus
+  # Grafana's chart keeps its random admin password stable via Helm lookup(),
+  # which returns empty under Argo CD (`helm template`, no cluster access) — so
+  # each sync would regenerate it and drift from the DB-initialized value. Pin
+  # the first-generated password by ignoring the field on sync.
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: prometheus-grafana
+      namespace: prometheus
+      jsonPointers:
+        - /data/admin-password
   syncPolicy:
     automated:
       prune: true
@@ -97,3 +108,4 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
