@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
-    targetRevision: "0.14.4"
+    targetRevision: "2.7.0"
   destination:
     server: https://kubernetes.default.svc
     namespace: external-secrets
