@@ -10,6 +10,7 @@ storageProvisionerRepoURL: ""   # defaults to platformRepoURL when empty
 storageProvisionerRevision: "main"
 clusterFqdnSuffix: ""
 trustedCaPemB64: ""
+traefikExtraConfig: {}          # traefikExtraConfig.ports entries are merged into traefik's ports block (web/websecure are always present)
 workloadsRepoURL: ""
 workloadsRevision: main
 workloadsPath: "."

@@ -18,6 +18,16 @@ spec:
           value: {{ .Values.pkiIssuerName | quote }}
         - name: secretStoreType
           value: {{ .Values.secretStoreType | quote }}
+        - name: awsRegion
+          value: {{ .Values.awsRegion | quote }}
+        - name: vaultAddr
+          value: {{ .Values.vaultAddr | quote }}
+        - name: vaultRole
+          value: {{ .Values.vaultRole | quote }}
+        - name: azureKeyVaultUrl
+          value: {{ .Values.azureKeyVaultUrl | quote }}
+        - name: azureTenantId
+          value: {{ .Values.azureTenantId | quote }}
         - name: ssmByoCaCertPath
           value: {{ .Values.ssmByoCaCertPath | quote }}
         - name: ssmByoCaChainPath

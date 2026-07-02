@@ -34,6 +34,10 @@ spec:
               default: true
             exposedPort: 443
             protocol: TCP
+{{- range $name, $cfg := .Values.traefikExtraConfig.ports }}
+          {{ $name }}:
+{{ toYaml $cfg | indent 12 }}
+{{- end }}
 
         api:
           dashboard: true
