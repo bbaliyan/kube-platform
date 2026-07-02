@@ -22,6 +22,15 @@ spec:
           auth_enabled: false
           limits_config:
             retention_period: 72h
+          schemaConfig:
+            configs:
+              - from: "2024-04-01"
+                store: tsdb
+                object_store: filesystem
+                schema: v13
+                index:
+                  prefix: index_
+                  period: 24h
         singleBinary:
           replicas: 1
           persistence:
