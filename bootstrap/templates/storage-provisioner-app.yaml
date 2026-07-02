@@ -23,6 +23,7 @@ spec:
             # a chance to release them via reclaimPolicy: Delete.
             extraVolumeTags:
               {{- if .Values.clusterName }}
+              Name: {{ printf "kube-node-%s-pv" .Values.clusterName | quote }}
               ClusterName: {{ .Values.clusterName | quote }}
               {{- end }}
               {{- range $k, $v := .Values.extraTags }}
