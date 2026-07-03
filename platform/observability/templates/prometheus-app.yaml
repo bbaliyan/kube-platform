@@ -38,8 +38,49 @@ spec:
               url: http://loki.loki.svc.cluster.local:3100
               access: proxy
               isDefault: false
+          dashboardProviders:
+            dashboardproviders.yaml:
+              apiVersion: 1
+              providers:
+                - name: default
+                  orgId: 1
+                  folder: ""
+                  type: file
+                  disableDeletion: false
+                  editable: true
+                  options:
+                    path: /var/lib/grafana/dashboards/default
+          dashboards:
+            default:
+              # Official Argo CD dashboard (grafana.com/dashboards/14584),
+              # fetched at pod start. Pairs with the argocd PodMonitor below.
+              argocd:
+                gnetId: 14584
+                revision: 1
+                datasource: Prometheus
 
         prometheus:
+          # The bootstrap Argo CD install does not create metrics Services, but
+          # every component pod exposes a container port named "metrics"
+          # (controller 8082, repo-server 8084, server 8083, applicationset 8080).
+          # A PodMonitor scrapes those directly, and creating it through this
+          # chart gives it the release label Prometheus's selector requires.
+          additionalPodMonitors:
+            - name: argocd
+              namespaceSelector:
+                matchNames:
+                  - argocd
+              selector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - argocd-application-controller
+                      - argocd-repo-server
+                      - argocd-server
+                      - argocd-applicationset-controller
+              podMetricsEndpoints:
+                - port: metrics
           prometheusSpec:
             retention: 7d
             storageSpec:
