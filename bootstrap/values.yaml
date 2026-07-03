@@ -20,7 +20,11 @@ workloadsPath: "."
 # repos over HTTPS from a git server with an internally-issued certificate (the
 # repo-server does not read the node OS trust store). Rendered into
 # argocd-tls-certs-cm; selfHeal re-asserts it if an Argo CD reinstall resets the
-# default. Leave empty when all HTTPS git hosts have publicly-trusted certificates.
+# default. Leave empty when all HTTPS git hosts have publicly-trusted
+# certificates. CAUTION: a configured cert REPLACES system trust for that host —
+# setting this for a host that actually serves a publicly-trusted certificate
+# breaks verification for it. Verify what the server serves first:
+#   openssl s_client -connect <host>:443 -servername <host> -showcerts
 argocdTlsCertHostname: ""
 
 # Secret store wiring for private workload repo access.
