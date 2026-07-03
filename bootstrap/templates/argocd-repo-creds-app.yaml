@@ -18,6 +18,8 @@ spec:
           value: {{ .Values.secretStoreType | quote }}
         - name: repoCredsUrlPrefix
           value: {{ .Values.repoCredsUrlPrefix | quote }}
+        - name: repoCredsUsername
+          value: {{ .Values.repoCredsUsername | quote }}
         - name: vaultAddr
           value: {{ .Values.vaultAddr | quote }}
         - name: vaultRole

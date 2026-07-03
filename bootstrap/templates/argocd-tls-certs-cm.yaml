@@ -1,0 +1,19 @@
+{{- if and .Values.trustedCaPemB64 .Values.argocdTlsCertHostname }}
+# Takes over argocd-tls-certs-cm from the initial Argo CD install: the
+# repo-server verifies git-over-HTTPS certificates against this ConfigMap (plus
+# its bundled public CAs), not the node OS trust store, so an internally-issued
+# git server certificate needs its CA registered here. A reinstall of Argo CD
+# resets the ConfigMap to its empty default; selfHeal on the platform
+# Application re-asserts this rendered version.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-tls-certs-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-tls-certs-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  {{ .Values.argocdTlsCertHostname }}: |
+    {{- .Values.trustedCaPemB64 | b64dec | trim | nindent 4 }}
+{{- end }}

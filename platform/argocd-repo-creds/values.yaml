@@ -1,5 +1,6 @@
 secretStoreType: ""
 repoCredsUrlPrefix: ""
+repoCredsUsername: ""   # required when repoCredsUrlPrefix is https (token auth)
 vaultAddr: ""
 vaultRole: ""
 vaultSecretPath: ""
