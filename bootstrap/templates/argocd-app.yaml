@@ -27,6 +27,40 @@ spec:
           params:
             # Deliberate: TLS terminates upstream (ingress / load balancer); Argo CD serves plain HTTP behind it.
             server.insecure: "true"
+        # repo-server and application-controller ship with zero resource
+        # requests (BestEffort QoS) and a 1s probe timeoutSeconds upstream.
+        # Not the cause of any specific incident seen so far (a repo-server
+        # crash loop on cluster-1 turned out to be an unrelated node-level
+        # Cilium/nft_compat issue), but a BestEffort pod with a 1s probe
+        # deadline has no guaranteed CPU share on a small single-node box, so
+        # it's one contention scenario away from the same symptom. Cheap
+        # insurance: a real (if modest) CPU/memory guarantee and a probe
+        # timeout that tolerates brief scheduling jitter.
+        repoServer:
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+          readinessProbe:
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            timeoutSeconds: 5
+            failureThreshold: 5
+        controller:
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+          readinessProbe:
+            timeoutSeconds: 5
+            failureThreshold: 5
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
