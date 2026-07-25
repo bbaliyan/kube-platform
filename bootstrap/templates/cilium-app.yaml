@@ -1,0 +1,54 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cilium
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  source:
+    repoURL: https://helm.cilium.io/
+    chart: cilium
+    # Genesis (node-bootstrap's Ansible role) installs a pinned version of
+    # this same chart directly via `helm template` (never RKE2's own
+    # rke2-cilium HelmChart CRD — see kube-compute's
+    # .scratch/cilium-argocd-gitops-handoff/map.md) so this Application can
+    # adopt the already-running resources cleanly via ServerSideApply below,
+    # with no uninstall/reinstall and no dataplane disruption. From here on,
+    # bumping this version is how you upgrade Cilium — no Ansible re-run.
+    targetRevision: "1.19.5"
+    helm:
+      values: |
+        kubeProxyReplacement: true
+        k8sServiceHost: "127.0.0.1"
+        k8sServicePort: 6443
+        # cilium-operator's chart default is 2 replicas with pod
+        # anti-affinity — on a genuinely single-node cluster this leaves one
+        # replica permanently Pending. Genesis passes replicas: 1 for
+        # single-node topologies (node-bootstrap's cilium_operator_replicas);
+        # this Application has no topology signal to do the same
+        # automatically today, so a single-node consumer should override
+        # operator.replicas: 1 here to match. Left at the chart default
+        # (commented) rather than guessing.
+        # operator:
+        #   replicas: 1
+        operator:
+          tolerations:
+            - operator: Exists
+        ipam:
+          operator:
+            clusterPoolIPv4PodCIDRList: ["10.42.0.0/16"]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # No CreateNamespace=true — kube-system always exists. ServerSideApply
+      # is what lets this Application adopt genesis's already-running
+      # cilium-operator/cilium objects (no prior Argo CD tracking on them)
+      # without deleting and recreating anything.
+      - ServerSideApply=true

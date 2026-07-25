@@ -1,0 +1,42 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-cd
+    # Self-management: Argo CD reconciling its own installation. Genesis
+    # (node-bootstrap's Ansible role) installs *a* working pinned version of
+    # this same chart via `helm template` (never RKE2's HelmChart CRD — see
+    # kube-compute's .scratch/cilium-argocd-gitops-handoff/map.md) purely to
+    # get a running Argo CD; it does not need to match this targetRevision.
+    # From here on, bumping this version is how you upgrade Argo CD itself —
+    # an ordinary in-place Helm upgrade, not a risky swap, so no adoption
+    # subtlety beyond ServerSideApply below. A rolling update keeps the
+    # controller performing the sync alive until its replacement is Ready,
+    # the same as any other self-managed Argo CD install.
+    targetRevision: "10.1.3"
+    helm:
+      values: |
+        configs:
+          params:
+            # Deliberate: TLS terminates upstream (ingress / load balancer); Argo CD serves plain HTTP behind it.
+            server.insecure: "true"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # No CreateNamespace=true — genesis already created the argocd
+      # namespace. ServerSideApply is what lets this Application adopt
+      # genesis's already-running resources (no prior Argo CD tracking on
+      # them) without deleting and recreating anything.
+      - ServerSideApply=true
