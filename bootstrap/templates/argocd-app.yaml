@@ -36,13 +36,24 @@ spec:
         # it's one contention scenario away from the same symptom. Cheap
         # insurance: a real (if modest) CPU/memory guarantee and a probe
         # timeout that tolerates brief scheduling jitter.
+        # Sizing below matches the small-cluster figures generally quoted in
+        # the Argo CD community for a handful of Applications (there is no
+        # single official Argo CD sizing table — checked the HA doc, the
+        # argocd-operator docs, and third-party performance guides directly;
+        # none prescribe defaults, the operator docs explicitly disclaim their
+        # examples as non-recommendations). Cross-checked against a real
+        # measurement on cluster-1: application-controller sat around 500Mi
+        # reconciling the full ~17-app platform tree (cert-manager, cilium,
+        # observability stack, traefik, etc.) — a 1Gi limit keeps ~2x headroom
+        # over that rather than padding further, since the ask here is lean
+        # over generous.
         repoServer:
           resources:
             requests:
-              cpu: 200m
-              memory: 256Mi
+              cpu: 100m
+              memory: 128Mi
             limits:
-              cpu: 1000m
+              cpu: 500m
               memory: 512Mi
           readinessProbe:
             timeoutSeconds: 5
@@ -51,19 +62,13 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 5
         controller:
-          # 512Mi was an initial guess and OOM-killed the controller in
-          # practice once it was reconciling the platform app-of-apps' full
-          # tree (~17 child Applications: cert-manager, cilium, observability
-          # stack, traefik, etc.) — confirmed on cluster-1, real usage sits
-          # around 500Mi at that app count. 2Gi gives headroom as the app
-          # count grows further.
           resources:
             requests:
               cpu: 250m
-              memory: 512Mi
+              memory: 256Mi
             limits:
               cpu: 1000m
-              memory: 2Gi
+              memory: 1Gi
           readinessProbe:
             timeoutSeconds: 5
             failureThreshold: 5
