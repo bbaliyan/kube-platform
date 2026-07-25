@@ -51,13 +51,19 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 5
         controller:
+          # 512Mi was an initial guess and OOM-killed the controller in
+          # practice once it was reconciling the platform app-of-apps' full
+          # tree (~17 child Applications: cert-manager, cilium, observability
+          # stack, traefik, etc.) — confirmed on cluster-1, real usage sits
+          # around 500Mi at that app count. 2Gi gives headroom as the app
+          # count grows further.
           resources:
             requests:
               cpu: 250m
-              memory: 256Mi
+              memory: 512Mi
             limits:
               cpu: 1000m
-              memory: 512Mi
+              memory: 2Gi
           readinessProbe:
             timeoutSeconds: 5
             failureThreshold: 5
