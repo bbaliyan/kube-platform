@@ -1,0 +1,26 @@
+# Lean, temporary default: no external NAS/SAN, no distributed-storage
+# machinery — just hostPath directories on whichever node a pod lands on.
+# No cross-node data mobility (a pod's PVC is pinned to wherever it was first
+# provisioned), so this is a stopgap for a single-node cluster, not a
+# long-term answer once workloads that need real durability/HA are running.
+#
+# Vendored directly from rancher/local-path-provisioner's own published
+# manifest (https://github.com/rancher/local-path-provisioner/blob/v0.0.36/deploy/local-path-storage.yaml)
+# rather than depending on a Helm chart — Rancher's own chart is gated
+# behind SUSE's authenticated OCI registry, and no other official,
+# credential-free Helm distribution exists. Only the image, storage path,
+# and StorageClass settings are parameterized here.
+image:
+  repository: docker.io/rancher/local-path-provisioner
+  tag: v0.0.36
+
+# Path used on every node unless overridden per-node — see upstream's
+# nodePathMap docs for per-node overrides
+# (https://github.com/rancher/local-path-provisioner#configuration).
+path: /var/lib/rancher/local-path-provisioner
+
+storageClass:
+  name: local-path
+  defaultClass: true
+  reclaimPolicy: Delete
+  volumeBindingMode: WaitForFirstConsumer

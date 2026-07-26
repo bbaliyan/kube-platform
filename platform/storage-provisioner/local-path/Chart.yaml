@@ -1,0 +1,5 @@
+apiVersion: v2
+name: local-path
+description: rancher/local-path-provisioner — hostPath-backed dynamic storage, no external dependency and no distributed-storage overhead.
+type: application
+version: 0.1.0

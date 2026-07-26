@@ -5,7 +5,7 @@ platformRevision: main
 certMode: selfsigned
 clusterName: ""                 # raw cluster identifier — used to tag dynamically-provisioned storage
 extraTags: {}                    # arbitrary tags forwarded from node-aws's extra_tags, applied to CSI-provisioned storage
-storageProvisionerType: ""      # aws-ebs | democratic-csi | longhorn — empty disables
+storageProvisionerType: ""      # aws-ebs | democratic-csi | longhorn | local-path — empty disables
 storageProvisionerRepoURL: ""   # defaults to platformRepoURL when empty
 storageProvisionerRevision: "main"
 storageProvisionerHelmValues: {}   # backend-specific values for democratic-csi/longhorn (not used by aws-ebs, which derives its own from clusterName/extraTags above) — e.g. driver connection details, storageClasses, replica counts. Set via platform_helm_values_object per-cluster.
