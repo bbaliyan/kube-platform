@@ -25,15 +25,21 @@ spec:
         k8sServicePort: 6443
         # cilium-operator's chart default is 2 replicas with pod
         # anti-affinity — on a genuinely single-node cluster this leaves one
-        # replica permanently Pending. Genesis passes replicas: 1 for
-        # single-node topologies (node-bootstrap's cilium_operator_replicas);
-        # this Application has no topology signal to do the same
-        # automatically today, so a single-node consumer should override
-        # operator.replicas: 1 here to match. Left at the chart default
-        # (commented) rather than guessing.
-        # operator:
-        #   replicas: 1
+        # replica permanently Pending (confirmed on cluster-1: a second
+        # cilium-operator pod stuck Pending forever, "didn't have free ports
+        # for the requested pod ports" — both replicas request the same
+        # hostPorts, only one can ever schedule on one node). Genesis passes
+        # replicas: 1 for single-node topologies (node-bootstrap's
+        # cilium_operator_replicas), but that only covers genesis's initial
+        # install — once this Application's own selfHeal reconciles, it has
+        # no topology signal of its own and reverts to the chart default of
+        # 2. Set to 1 here to match, since a single-node cluster is this
+        # project's current primary target; a multi-node consumer will need
+        # a way to override this back up once that topology exists (no
+        # passthrough mechanism for this Application exists yet — unlike
+        # storage-provisioner's storageProvisionerHelmValues).
         operator:
+          replicas: 1
           tolerations:
             - operator: Exists
         ipam:
