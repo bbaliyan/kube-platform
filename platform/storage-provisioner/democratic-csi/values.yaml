@@ -1,3 +1,27 @@
-# Placeholder values for the democratic-csi provisioner.
-# Populate with driver config (driverConfig, storageClasses, etc.) before use.
-# See https://github.com/democratic-csi/charts
+# Generic democratic-csi scaffold — no backend (TrueNAS or otherwise) is
+# specific to this chart. Everything below is genuinely consumer-specific
+# (which NAS/SAN, its connection details, dataset layout) and MUST be
+# supplied per-cluster via platform_extra_helm_parameters /
+# platform_helm_values_object in the consumer repo — never filled in here.
+#
+# Nested under "democratic-csi" because that's the Helm dependency's release
+# name (values for a subchart must be namespaced under it, not top-level —
+# same pattern as aws-ebs's values being nested under aws-ebs-csi-driver).
+#
+# democratic-csi.driver.config holds the full backend driver config (see
+# https://github.com/democratic-csi/democratic-csi/tree/master/examples for
+# the shape per backend, e.g. freenas-api-iscsi for TrueNAS over iSCSI).
+# Secrets (API keys/passwords) inside it must never be set directly in
+# git-tracked values — use driver.existingConfigSecret to point at a secret
+# created out-of-band instead, and leave driver.config.driver as the only
+# key set here (the chart needs it even when existingConfigSecret is used).
+democratic-csi:
+  driver:
+    existingConfigSecret: ""
+    config:
+      driver: ""
+
+  csiDriver:
+    name: ""
+
+  storageClasses: []

@@ -1,3 +1,31 @@
-# Placeholder values for the Longhorn provisioner.
-# Populate with persistence, defaultClass, and replica settings before use.
-# See https://github.com/longhorn/charts
+# Node-local block storage. No external dependency (NAS/SAN) — Longhorn
+# turns each node's own disk into a CSI-backed StorageClass, replicating
+# across nodes when more than one is available.
+#
+# Host prerequisite NOT yet handled by kube-compute's cloud-init template:
+# Longhorn requires open-iscsi (iscsiadm) on every node, and nfs-common for
+# RWX volumes. AlmaLinux 10's minimal image ships neither. Volume attach will
+# fail until the node has these installed — same class of gap as the
+# nft_compat/kernel-modules-extra fix already made for Cilium. Not fixed here
+# since cluster-1 uses democratic-csi, not Longhorn; whoever picks Longhorn
+# for a real cluster needs to add iscsi-initiator-utils/nfs-utils to stage-0
+# first.
+#
+# Nested under "longhorn" because that's the Helm dependency's release name
+# (values for a subchart must be namespaced under it, not top-level).
+longhorn:
+  persistence:
+    defaultClass: true
+    # Upstream defaults to 3 replicas, assuming a multi-node cluster. On a
+    # single node there's nowhere to place the other two — Longhorn would
+    # just leave the volume under-replicated forever. Set to 1 here since
+    # this project's primary target is a single-node cluster; a consumer
+    # running Longhorn on a multi-node topology should override this (and
+    # defaultDataLocality below) via platform_extra_helm_parameters /
+    # platform_helm_values_object for that cluster.
+    defaultClassReplicaCount: 1
+    reclaimPolicy: Delete
+  defaultSettings:
+    # Matches defaultClassReplicaCount above for volumes created outside the
+    # default StorageClass (e.g. via the Longhorn UI).
+    defaultReplicaCount: 1

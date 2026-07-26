@@ -1,5 +1,9 @@
 apiVersion: v2
 name: democratic-csi
-description: democratic-csi storage provisioner (stub — add dependency and values before use).
+description: democratic-csi storage provisioner, driving an external NAS/SAN backend (e.g. TrueNAS) over iSCSI or NFS.
 type: application
 version: 0.1.0
+dependencies:
+  - name: democratic-csi
+    repository: https://democratic-csi.github.io/charts/
+    version: "0.15.*"
