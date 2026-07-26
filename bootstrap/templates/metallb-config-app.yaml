@@ -1,0 +1,35 @@
+{{- if .Values.metallbAddressPool }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: metallb-config
+  namespace: argocd
+  annotations:
+    # Wave 1: metallb (wave 0) must be Healthy first — IPAddressPool/L2Advertisement
+    # are CRDs metallb's own chart installs, not built into Kubernetes. No ordering
+    # requirement against Traefik (also wave 1): MetalLB's controller is a
+    # continuously-reconciling watcher, not a one-shot-at-creation assignment — it
+    # assigns an IP to Traefik's Service whenever both the Service and a matching
+    # pool exist, regardless of which appeared first.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.platformRepoURL }}
+    targetRevision: {{ .Values.platformRevision }}
+    path: platform/loadbalancer/metallb-config
+    helm:
+      valuesObject:
+        addressPool:
+{{ .Values.metallbAddressPool | toYaml | indent 10 }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: metallb-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+{{- end }}
