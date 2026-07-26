@@ -23,6 +23,21 @@ spec:
         kubeProxyReplacement: true
         k8sServiceHost: "127.0.0.1"
         k8sServicePort: 6443
+        # Node IPAM LB is this platform's LoadBalancer mechanism on every
+        # provider (replaced MetalLB). It advertises the node's own IP into a
+        # LoadBalancer Service's status; the node IP is natively routable on a
+        # Proxmox LAN and inside an AWS VPC alike, and Cilium's eBPF datapath
+        # (kubeProxyReplacement above) forwards to the backend pods — no ARP,
+        # no BGP, no cloud API, no extra component. defaultLBServiceIPAM makes
+        # every LoadBalancer Service use it without needing a per-Service
+        # loadBalancerClass (which would be immutable and force Service
+        # recreation), so Traefik's Service is picked up unchanged. On a
+        # multi-node cluster the Service is published with the IPs of the nodes
+        # running a backend pod (Traefik is a DaemonSet with
+        # externalTrafficPolicy: Local); consumers front those with DNS.
+        nodeIPAM:
+          enabled: true
+        defaultLBServiceIPAM: nodeipam
         # cilium-operator's chart default is 2 replicas with pod
         # anti-affinity — on a genuinely single-node cluster this leaves one
         # replica permanently Pending (confirmed on cluster-1: a second

@@ -1,5 +1,0 @@
-apiVersion: v2
-name: metallb-config
-description: IPAddressPool/L2Advertisement instances for the metallb Application's chart-installed CRDs. No chart dependency — addresses are consumer-supplied, there's nothing to fetch.
-type: application
-version: 0.1.0
