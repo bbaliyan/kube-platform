@@ -29,6 +29,16 @@ spec:
               {{- range $k, $v := .Values.extraTags }}
               {{ $k }}: {{ $v | quote }}
               {{- end }}
+{{- else if .Values.storageProvisionerHelmValues }}
+    helm:
+      # Generic passthrough for any backend other than aws-ebs (which derives
+      # its values above from generic clusterName/extraTags inputs instead).
+      # democratic-csi/longhorn need fully consumer-supplied, backend-specific
+      # values (NAS connection details, dataset layout, replica counts, ...)
+      # that have no generic equivalent to derive from — the consumer sets
+      # storageProvisionerHelmValues directly via platform_helm_values_object.
+      valuesObject:
+{{ .Values.storageProvisionerHelmValues | toYaml | indent 8 }}
 {{- end }}
   destination:
     server: https://kubernetes.default.svc

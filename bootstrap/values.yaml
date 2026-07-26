@@ -8,6 +8,7 @@ extraTags: {}                    # arbitrary tags forwarded from node-aws's extr
 storageProvisionerType: ""      # aws-ebs | democratic-csi | longhorn — empty disables
 storageProvisionerRepoURL: ""   # defaults to platformRepoURL when empty
 storageProvisionerRevision: "main"
+storageProvisionerHelmValues: {}   # backend-specific values for democratic-csi/longhorn (not used by aws-ebs, which derives its own from clusterName/extraTags above) — e.g. driver connection details, storageClasses, replica counts. Set via platform_helm_values_object per-cluster.
 clusterFqdnSuffix: ""
 trustedCaPemB64: ""
 traefikExtraConfig: {}          # traefikExtraConfig.ports entries are merged into traefik's ports block (web/websecure are always present)
