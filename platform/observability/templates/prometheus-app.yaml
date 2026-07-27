@@ -5,6 +5,13 @@ metadata:
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    # ServerSideApply (below) makes Argo CD compute the diff with its built-in
+    # gitops-engine schema, which lags the real CRDs and doesn't know newer
+    # prometheus-operator fields (e.g. .spec.hostNetwork) — the sync then fails
+    # with "field not declared in schema". ServerSideDiff runs the diff as a
+    # server-side dry-run apply against the live CRD schema, which does know the
+    # field. See argoproj/argo-cd#20458.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
   project: default
   source:
