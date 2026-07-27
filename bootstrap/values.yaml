@@ -12,9 +12,6 @@ storageProvisionerHelmValues: {}   # backend-specific values for democratic-csi/
 clusterFqdnSuffix: ""
 trustedCaPemB64: ""
 traefikExtraConfig: {}          # traefikExtraConfig.ports entries are merged into traefik's ports block (web/websecure are always present)
-workloadsRepoURL: ""
-workloadsRevision: main
-workloadsPath: "."
 
 # Hostname whose TLS certificate should be verified against the trustedCaPemB64
 # CA instead of the repo-server's bundled public CAs — needed when Argo CD syncs
