@@ -1,0 +1,26 @@
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: rke2-agent
+  namespace: system-upgrade
+spec:
+  concurrency: {{ .Values.agentConcurrency }}
+  version: {{ .Values.k8sVersion | quote }}
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: DoesNotExist
+  serviceAccountName: system-upgrade
+  # Only ever matches worker nodes (excluded from control-plane by the
+  # selector above); on a single-node cluster this Plan matches nothing and
+  # is a no-op, so no singleNodeCluster gating is needed here the way the
+  # server Plan needs it.
+  drain:
+    force: true
+  prepare:
+    image: rancher/rke2-upgrade
+    args:
+      - prepare
+      - rke2-server
+  upgrade:
+    image: rancher/rke2-upgrade

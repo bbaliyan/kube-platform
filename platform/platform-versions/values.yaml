@@ -1,0 +1,20 @@
+# Single source of truth for platform component versions, shared across every
+# cluster tracking this repo's protected branch. Cluster-agnostic by design —
+# no consumer/cluster-specific values belong here (see kube-claude's CLAUDE.md).
+#
+# Two consumers read this file:
+#   - Argo CD / Helm: charts that need a version (e.g. the system-upgrade-controller
+#     Plan's k8s_version) template it from these values.
+#   - Terraform: each cluster's terragrunt.hcl fetches this file's raw content via a
+#     `data "http"` source and parses it with yamldecode(), instead of hardcoding a
+#     literal version — so new-node provisioning always installs whatever this file
+#     currently says, with no second place to keep in sync.
+#
+# Bumping a version here is the entire operator action for a routine RKE2/platform
+# component upgrade — no terragrunt apply required for the upgrade itself.
+
+# renovate: datasource=github-releases depName=rancher/rke2
+k8sVersion: v1.36.2+rke2r1
+
+# renovate: datasource=helm depName=argo-cd registryUrl=https://argoproj.github.io/argo-helm
+argocdVersion: 10.1.3

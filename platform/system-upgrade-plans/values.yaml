@@ -1,0 +1,24 @@
+# Defaults here are only used when rendering locally (e.g. helm template for
+# validation) — real values are injected by the Application's helm.parameters
+# (singleNodeCluster, per cluster topology) and by the multi-source values
+# reference to platform/platform-versions/values.yaml (k8sVersion).
+
+# Whether this cluster has exactly one node. Single-node clusters have nowhere
+# for a cordoned/drained node's workloads to go, so cordon/drain must be
+# disabled on the server Plan for them — the documented cause of RKE2's
+# single-node stuck-in-"updating" bug (rancher/rancher#48752) when left on.
+# Multi-node clusters (cluster-2/cluster-3 shape: real headroom) get cordon on
+# the server Plan and a forced drain on the agent Plan, since draining is
+# meaningful and safe there.
+singleNodeCluster: false
+
+# How many worker nodes system-upgrade-controller upgrades concurrently.
+# Workers hold no etcd/quorum state, so this can safely exceed 1 — unlike the
+# server Plan, which is always concurrency: 1 (etcd quorum tolerates losing
+# at most one control-plane node at a time; see #16's resolution).
+agentConcurrency: 2
+
+# RKE2 version target — left empty here; supplied via the multi-source values
+# reference to platform/platform-versions/values.yaml's k8sVersion at deploy
+# time. Only meaningful as a placeholder for standalone `helm template` runs.
+k8sVersion: ""

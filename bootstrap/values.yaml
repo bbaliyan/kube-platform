@@ -13,6 +13,12 @@ clusterFqdnSuffix: ""
 trustedCaPemB64: ""
 traefikExtraConfig: {}          # traefikExtraConfig.ports entries are merged into traefik's ports block (web/websecure are always present)
 
+# Whether this cluster has exactly one node — set per-cluster via the existing
+# platform_extra_helm_parameters escape hatch (no new Terraform variable
+# needed). Controls cordon/drain on the RKE2 server upgrade Plan; see
+# platform/system-upgrade-plans/values.yaml for why.
+singleNodeCluster: false
+
 # Hostname whose TLS certificate should be verified against the trustedCaPemB64
 # CA instead of the repo-server's bundled public CAs — needed when Argo CD syncs
 # repos over HTTPS from a git server with an internally-issued certificate (the

@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: system-upgrade-plans
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  sources:
+    - repoURL: {{ .Values.platformRepoURL }}
+      targetRevision: {{ .Values.platformRevision }}
+      path: platform/system-upgrade-plans
+      helm:
+        # Single cluster-agnostic source of truth for k8sVersion (and other
+        # platform component versions) — see platform/platform-versions/values.yaml
+        # and the map decision it implements (kube-claude#23).
+        valueFiles:
+          - $values/platform/platform-versions/values.yaml
+        parameters:
+          - name: singleNodeCluster
+            value: {{ .Values.singleNodeCluster | default false | quote }}
+    - repoURL: {{ .Values.platformRepoURL }}
+      targetRevision: {{ .Values.platformRevision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: system-upgrade
+  # Deliberately no `automated:` block — manual sync only. Staged per-cluster
+  # RKE2 rollout is achieved by choosing *when* to run `argocd app sync
+  # system-upgrade-plans` on each cluster, not by differing target versions
+  # (kube-claude#23's resolution: one shared version value, timing is the
+  # per-cluster control point).
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
