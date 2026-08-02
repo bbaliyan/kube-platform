@@ -13,6 +13,14 @@ spec:
       - key: node-role.kubernetes.io/control-plane
         operator: Exists
   serviceAccountName: system-upgrade
+  # Control-plane nodes provisioned with dedicated_control_plane/control_plane_taint
+  # (kube-compute) carry CriticalAddonsOnly=true:NoExecute to keep user workloads
+  # off them. The upgrade job must still land there to upgrade the node — same
+  # fix already applied to cilium-operator for the same taint.
+  tolerations:
+    - key: CriticalAddonsOnly
+      operator: Exists
+      effect: NoExecute
   {{- if .Values.singleNodeCluster }}
   # Single-node cluster: no other node exists to receive a cordoned node's
   # workloads, so cordon/drain is a no-op at best, actively harmful at worst
