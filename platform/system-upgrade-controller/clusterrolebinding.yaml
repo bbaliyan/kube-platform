@@ -1,0 +1,44 @@
+# Vendored from https://github.com/rancher/system-upgrade-controller/blob/v0.20.1/manifests/clusterrolebinding.yaml
+# with `namespace: system-upgrade` added to the two ClusterRoleBinding subjects.
+# Upstream omits it there because it expects `kubectl apply -k` (Kustomize's
+# namespace transformer fills it in); applied as plain manifests it's required
+# by the API server. The RoleBinding below is unaffected — RoleBinding subjects
+# default to the binding's own namespace.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: system-upgrade-drainer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system-upgrade-controller-drainer
+subjects:
+- kind: ServiceAccount
+  name: system-upgrade
+  namespace: system-upgrade
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: system-upgrade
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system-upgrade-controller
+subjects:
+- kind: ServiceAccount
+  name: system-upgrade
+  namespace: system-upgrade
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: system-upgrade
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: system-upgrade-controller
+subjects:
+- kind: ServiceAccount
+  name: system-upgrade

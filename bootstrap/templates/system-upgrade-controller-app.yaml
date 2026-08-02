@@ -8,18 +8,15 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/rancher/system-upgrade-controller.git
-    targetRevision: v0.20.1
-    path: .
-    kustomize:
-      # Upstream's root kustomization.yaml still applies for the namespace
-      # transformer (it fills in subjects[].namespace on the ClusterRoleBindings,
-      # which manifests/clusterrolebinding.yaml omits — required for kubectl
-      # server-side validation). But that kustomization.yaml also pins
-      # images[].newTag to a stale v0.14.0, independent of targetRevision.
-      # Override it here so the deployed image always matches targetRevision.
-      images:
-        - rancher/system-upgrade-controller:v0.20.1
+    # Vendored copy of upstream's manifests (see platform/system-upgrade-controller/)
+    # rather than pointing straight at rancher/system-upgrade-controller.git: their
+    # raw manifests need a Kustomize namespace transform to be valid on their own,
+    # and pin a stale image tag independent of the release tag. Vendoring means a
+    # version bump requires manually re-copying those files from the new upstream
+    # tag, with the same two fixes re-applied.
+    repoURL: {{ .Values.platformRepoURL }}
+    targetRevision: {{ .Values.platformRevision }}
+    path: platform/system-upgrade-controller
   destination:
     server: https://kubernetes.default.svc
     namespace: system-upgrade
