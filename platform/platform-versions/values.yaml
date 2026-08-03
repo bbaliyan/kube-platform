@@ -1,6 +1,6 @@
 # Single source of truth for platform component versions, shared across every
 # cluster tracking this repo's protected branch. Cluster-agnostic by design —
-# no consumer/cluster-specific values belong here (see kube-claude's CLAUDE.md).
+# no consumer/cluster-specific values belong here.
 #
 # Two consumers read this file:
 #   - Argo CD / Helm: charts that need a version (e.g. the system-upgrade-controller

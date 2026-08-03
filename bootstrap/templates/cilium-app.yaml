@@ -12,8 +12,7 @@ spec:
     chart: cilium
     # Genesis (node-bootstrap's Ansible role) installs a pinned version of
     # this same chart directly via `helm template` (never RKE2's own
-    # rke2-cilium HelmChart CRD — see kube-compute's
-    # .scratch/cilium-argocd-gitops-handoff/map.md) so this Application can
+    # rke2-cilium HelmChart CRD) so this Application can
     # adopt the already-running resources cleanly via ServerSideApply below,
     # with no uninstall/reinstall and no dataplane disruption. From here on,
     # bumping this version is how you upgrade Cilium — no Ansible re-run.

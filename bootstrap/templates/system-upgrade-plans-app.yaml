@@ -13,8 +13,7 @@ spec:
       path: platform/system-upgrade-plans
       helm:
         # Single cluster-agnostic source of truth for k8sVersion (and other
-        # platform component versions) — see platform/platform-versions/values.yaml
-        # and the map decision it implements (kube-claude#23).
+        # platform component versions) — see platform/platform-versions/values.yaml.
         valueFiles:
           - $values/platform/platform-versions/values.yaml
         parameters:
@@ -28,9 +27,8 @@ spec:
     namespace: system-upgrade
   # Deliberately no `automated:` block — manual sync only. Staged per-cluster
   # RKE2 rollout is achieved by choosing *when* to run `argocd app sync
-  # system-upgrade-plans` on each cluster, not by differing target versions
-  # (kube-claude#23's resolution: one shared version value, timing is the
-  # per-cluster control point).
+  # system-upgrade-plans` on each cluster, not by differing target versions:
+  # one shared version value, timing is the per-cluster control point.
   syncPolicy:
     syncOptions:
       - CreateNamespace=true

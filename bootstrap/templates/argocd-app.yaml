@@ -12,9 +12,8 @@ spec:
     chart: argo-cd
     # Self-management: Argo CD reconciling its own installation. Genesis
     # (node-bootstrap's Ansible role) installs *a* working pinned version of
-    # this same chart via `helm template` (never RKE2's HelmChart CRD — see
-    # kube-compute's .scratch/cilium-argocd-gitops-handoff/map.md) purely to
-    # get a running Argo CD; it does not need to match this targetRevision.
+    # this same chart via `helm template` (never RKE2's HelmChart CRD) purely
+    # to get a running Argo CD; it does not need to match this targetRevision.
     # From here on, bumping this version is how you upgrade Argo CD itself —
     # an ordinary in-place Helm upgrade, not a risky swap, so no adoption
     # subtlety beyond ServerSideApply below. A rolling update keeps the
