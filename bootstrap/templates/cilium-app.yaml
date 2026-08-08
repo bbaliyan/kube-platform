@@ -10,13 +10,17 @@ spec:
   source:
     repoURL: https://helm.cilium.io/
     chart: cilium
-    # Genesis (node-bootstrap's Ansible role) installs a pinned version of
-    # this same chart directly via `helm template` (never RKE2's own
-    # rke2-cilium HelmChart CRD) so this Application can
+    # Genesis (node-bootstrap's rendered cloud-init) installs a pinned
+    # version of this same chart directly via `helm template` (never RKE2's
+    # own rke2-cilium HelmChart CRD) so this Application can
     # adopt the already-running resources cleanly via ServerSideApply below,
     # with no uninstall/reinstall and no dataplane disruption. From here on,
-    # bumping this version is how you upgrade Cilium — no Ansible re-run.
-    targetRevision: "1.19.5"
+    # bumping platform/platform-versions/values.yaml's ciliumVersion is how
+    # you upgrade Cilium — this Application's own targetRevision is templated
+    # from that single source of truth (via the bootstrap chart's own
+    # multi-source Application, see kube-compute's node-bootstrap
+    # platform_app_yaml), not edited here directly.
+    targetRevision: {{ .Values.ciliumVersion | quote }}
     helm:
       values: |
         kubeProxyReplacement: true

@@ -3,8 +3,11 @@
 # no consumer/cluster-specific values belong here.
 #
 # Two consumers read this file:
-#   - Argo CD / Helm: charts that need a version (e.g. the system-upgrade-controller
-#     Plan's k8s_version) template it from these values.
+#   - Argo CD / Helm: charts that need a version — the system-upgrade-controller
+#     Plan's k8s_version, and (via the bootstrap chart's own multi-source
+#     Application, see kube-compute's node-bootstrap platform_app_yaml)
+#     cilium-app.yaml's/argocd-app.yaml's own targetRevision — template it
+#     from these values.
 #   - Terraform: each cluster's terragrunt.hcl fetches this file's raw content via a
 #     `data "http"` source and parses it with yamldecode(), instead of hardcoding a
 #     literal version — so new-node provisioning always installs whatever this file
@@ -18,3 +21,6 @@ k8sVersion: v1.36.2+rke2r1
 
 # renovate: datasource=helm depName=argo-cd registryUrl=https://argoproj.github.io/argo-helm
 argocdVersion: 10.1.3
+
+# renovate: datasource=helm depName=cilium registryUrl=https://helm.cilium.io/
+ciliumVersion: 1.19.5
