@@ -4,6 +4,7 @@ platformRepoURL: ""
 platformRevision: main
 certMode: selfsigned
 clusterName: ""                 # raw cluster identifier — used to tag dynamically-provisioned storage
+clusterAutoscalerEnabled: false # deploy cluster-autoscaler (CAPI cloudProvider) — off by default; opt in per-cluster
 extraTags: {}                    # arbitrary tags forwarded from node-aws's extra_tags, applied to CSI-provisioned storage
 storageProvisionerType: ""      # aws-ebs | democratic-csi | longhorn | local-path — empty disables
 storageProvisionerRepoURL: ""   # defaults to platformRepoURL when empty

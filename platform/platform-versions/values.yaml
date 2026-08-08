@@ -34,5 +34,5 @@ capmoxVersion: "v0.6.4"
 # renovate: datasource=github-releases depName=rancher/cluster-api-provider-rke2
 caprke2Version: "v0.4.1"
 
-# renovate: datasource=github-releases depName=kubernetes/autoscaler
-clusterAutoscalerVersion: "v1.31.1"
+# renovate: datasource=helm depName=cluster-autoscaler registryUrl=https://kubernetes.github.io/autoscaler
+clusterAutoscalerVersion: "9.59.0"

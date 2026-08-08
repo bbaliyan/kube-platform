@@ -1,8 +1,11 @@
+{{- if .Values.clusterAutoscalerEnabled }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: cluster-autoscaler
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   project: default
   source:
@@ -25,3 +28,4 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+{{- end }}
