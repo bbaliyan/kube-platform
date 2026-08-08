@@ -24,3 +24,15 @@ argocdVersion: 10.1.3
 
 # renovate: datasource=helm depName=cilium registryUrl=https://helm.cilium.io/
 ciliumVersion: 1.19.5
+
+# renovate: datasource=github-releases depName=kubernetes-sigs/cluster-api
+capiCoreVersion: "v1.9.5"
+
+# renovate: datasource=github-releases depName=ionos-cloud/cluster-api-provider-proxmox
+capmoxVersion: "v0.6.4"
+
+# renovate: datasource=github-releases depName=rancher/cluster-api-provider-rke2
+caprke2Version: "v0.4.1"
+
+# renovate: datasource=github-releases depName=kubernetes/autoscaler
+clusterAutoscalerVersion: "v1.31.1"
