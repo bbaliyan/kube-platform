@@ -29,7 +29,7 @@ ciliumVersion: 1.19.5
 capiCoreVersion: "v1.9.5"
 
 # renovate: datasource=github-releases depName=ionos-cloud/cluster-api-provider-proxmox
-capmoxVersion: "v0.6.4"
+capmoxVersion: "v0.9.0"
 
 # renovate: datasource=helm depName=cluster-autoscaler registryUrl=https://kubernetes.github.io/autoscaler
 clusterAutoscalerVersion: "9.59.0"
