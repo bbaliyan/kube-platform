@@ -1,0 +1,69 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":dependencyDashboard"
+  ],
+  "labels": ["renovate"],
+  "enabledManagers": ["custom.regex", "github-actions"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "RKE2 version — single source of truth in platform-versions/values.yaml, fetched by kube-compute's terragrunt units and kube-image's build.sh",
+      "fileMatch": ["^platform/platform-versions/values\\.yaml$"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+k8sVersion:\\s*v?(?<currentValue>[^\\s\"]+)"
+      ],
+      "versioningTemplate": "regex:^v?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\+rke2r(?<build>\\d+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "CAPI core / CAPMOX versions — plain GitHub-release semver, both consumed the same way (kube-image's build.sh clusterctl render)",
+      "fileMatch": ["^platform/platform-versions/values\\.yaml$"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+capiCoreVersion:\\s*\"(?<currentValue>[^\"]+)\"",
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+capmoxVersion:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "Helm chart versions (Argo CD, Cilium, cluster-autoscaler)",
+      "fileMatch": ["^platform/platform-versions/values\\.yaml$"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?) registryUrl=(?<registryUrl>.*?)\\s+argocdVersion:\\s*(?<currentValue>[0-9][^\\s\"]*)",
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?) registryUrl=(?<registryUrl>.*?)\\s+ciliumVersion:\\s*(?<currentValue>[0-9][^\\s\"]*)",
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?) registryUrl=(?<registryUrl>.*?)\\s+clusterAutoscalerVersion:\\s*\"(?<currentValue>[^\"]+)\""
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Batch routine patch updates into one weekly PR",
+      "matchUpdateTypes": ["patch", "pin", "pinDigest"],
+      "groupName": "patch updates",
+      "schedule": ["before 6am on Monday"]
+    },
+    {
+      "description": "Auto-merge patch PRs once CI is green",
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "description": "Minor/major require manual review",
+      "matchUpdateTypes": ["minor", "major"],
+      "automerge": false,
+      "labels": ["renovate", "needs-review"]
+    },
+    {
+      "description": "Security fixes get individual PRs immediately",
+      "matchCategories": ["security"],
+      "groupName": null,
+      "schedule": ["at any time"],
+      "automerge": false,
+      "labels": ["renovate", "security"]
+    }
+  ]
+}
