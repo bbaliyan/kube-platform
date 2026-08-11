@@ -10,7 +10,14 @@ spec:
     - match: Host(`prometheus.{{ .Values.clusterFqdnSuffix }}`)
       kind: Rule
       services:
-        - name: prometheus-kube-prometheus-prometheus
+        # prometheus-app.yaml sets fullnameOverride: prometheus, so the
+        # chart's generated Prometheus service is prometheus-prometheus, not
+        # the chart's un-overridden default (<release>-kube-prometheus-
+        # prometheus). Confirmed against a real cluster: traefik logged
+        # "kubernetes service not found: prometheus/prometheus-kube-
+        # prometheus-prometheus" continuously, and the real service was
+        # named prometheus-prometheus.
+        - name: prometheus-prometheus
           port: 9090
           namespace: prometheus
   tls: {}
