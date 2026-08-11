@@ -26,7 +26,7 @@ argocdVersion: 10.3.2
 ciliumVersion: 1.20.0
 
 # renovate: datasource=github-releases depName=kubernetes-sigs/cluster-api
-capiCoreVersion: "v1.9.5"
+capiCoreVersion: "v1.13.4"
 
 # renovate: datasource=github-releases depName=ionos-cloud/cluster-api-provider-proxmox
 capmoxVersion: "v0.9.0"
