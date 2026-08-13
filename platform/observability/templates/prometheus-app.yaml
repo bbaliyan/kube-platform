@@ -39,6 +39,22 @@ spec:
             server:
               root_url: "%(protocol)s://%(domain)s/"
               serve_from_sub_path: false
+          sidecar:
+            datasources:
+              enabled: true
+              # Lets any namespace self-register a Grafana datasource via a
+              # Secret labeled grafana_datasource: "1" -- the same pattern
+              # dashboards already use (sidecar.dashboards, this chart's own
+              # default, searchNamespace: ALL). Adds no new RBAC: the
+              # dashboards sidecar's existing searchNamespace: ALL already
+              # makes this chart create a ClusterRole granting Grafana's
+              # ServiceAccount cluster-wide get/watch/list on Secrets too
+              # (grafana subchart's clusterrole.yaml grants configmaps AND
+              # secrets together, gated on either sidecar needing ALL) --
+              # confirmed via `helm template` against this exact chart
+              # version before enabling. This setting only makes Grafana
+              # use a permission it already silently holds.
+              searchNamespace: ALL
           additionalDataSources:
             - name: Loki
               type: loki
