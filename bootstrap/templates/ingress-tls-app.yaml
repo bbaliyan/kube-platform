@@ -16,8 +16,6 @@ spec:
       parameters:
         - name: clusterFqdnSuffix
           value: {{ .Values.clusterFqdnSuffix | quote }}
-        - name: clusterName
-          value: {{ .Values.clusterName | quote }}
         - name: issuerName
           value: {{ .Values.pkiIssuerName | quote }}
   destination:
