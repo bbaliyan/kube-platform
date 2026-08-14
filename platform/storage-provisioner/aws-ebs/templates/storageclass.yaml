@@ -13,7 +13,7 @@ volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
 parameters:
   type: gp3
-  encrypted: "false"
+  encrypted: "true"
 ---
 # Post-install Job that removes the default-class annotation from local-path
 # so that ebs-gp3 becomes the sole default storage class on the cluster.

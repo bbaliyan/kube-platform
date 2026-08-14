@@ -11,4 +11,4 @@ aws-ebs-csi-driver:
       reclaimPolicy: Delete
       parameters:
         type: gp3
-        encrypted: "false"
+        encrypted: "true"
