@@ -3,6 +3,13 @@
 aws-ebs-csi-driver:
   controller:
     replicaCount: 1
+    # Off by default upstream — without it, the chart never adds the
+    # "volumemodifier" sidecar container to the controller pod at all, so
+    # nothing ever watches PVCs for a VolumeAttributesClass change or calls
+    # AWS's ModifyVolume API. Needed for any workload chart that changes
+    # storage.data.iops/throughputMBps live (e.g. kube-databases' chart-mssql).
+    volumeModificationFeature:
+      enabled: true
   storageClasses:
     - name: ebs-gp3
       annotations:
