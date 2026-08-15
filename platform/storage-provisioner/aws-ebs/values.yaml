@@ -3,39 +3,47 @@
 aws-ebs-csi-driver:
   controller:
     replicaCount: 1
-    # Adds the "volumemodifier" sidecar, which is what actually calls AWS's
-    # ModifyVolume when a PVC's volumeAttributesClassName changes. Off by
-    # default upstream; without it, IOPS/throughput changes silently never
-    # reach AWS at all.
-    #
-    # Note this sidecar (volume-modifier-for-k8s) is formally deprecated
-    # (kubernetes-sigs/aws-ebs-csi-driver#2435) in favour of native
-    # VolumeAttributesClass handling in the resizer sidecar. We tried
-    # turning it off to use that path and modifications stopped happening
-    # — a valid change sat at modifyVolumeStatus "Pending" indefinitely
-    # with nothing logging anything — so it's back on until the native
-    # path is verified working here. Revisit on a driver upgrade, but
-    # verify against a real IOPS change before switching, not on the
-    # deprecation notice alone.
+    # Left off (the upstream default). This adds the "volumemodifier"
+    # sidecar, which drives volume changes from *annotations* on a PVC
+    # (ebs.csi.aws.com/iops and friends) — an older, now-deprecated
+    # mechanism (kubernetes-sigs/aws-ebs-csi-driver#2435). We drive changes
+    # from VolumeAttributesClass instead, which is handled by the resizer
+    # and provisioner sidecars below, so this one has nothing to do here.
+    # See the driver's docs/modify-volume.md for the split.
     volumeModificationFeature:
-      enabled: true
-  # volumemodifier and resizer default to contending for the same
-  # leader-election lease even though they're separate containers
-  # (kubernetes-sigs/aws-ebs-csi-driver#1759) — observed live as
-  # volumemodifier silently going deaf until a pod restart. With
-  # replicaCount 1 there's only ever one pod, so leader election buys us
-  # nothing and costs us that collision.
-  #
-  # Only volumemodifier's setting takes effect: the chart renders resizer's
-  # as `.enabled | default true`, and Helm's `default` treats false as
-  # unset. Set on both anyway to record intent, and because disabling
-  # volumemodifier's side alone is enough — resizer is then the lease's
-  # only participant.
+      enabled: false
+
   sidecars:
+    # VolumeAttributesClass is the whole mechanism kube-databases uses to
+    # change a volume's IOPS/throughput after creation, so pin its feature
+    # gate on explicitly in both sidecars that implement it.
+    #
+    # The chart otherwise decides this at render time from
+    # `.Capabilities.APIVersions.Has "…/VolumeAttributesClass"` and renders
+    # `--feature-gates=VolumeAttributesClass=false` when it doesn't find it.
+    # Under Argo CD those capabilities come from its cluster cache rather
+    # than a live discovery call, so a stale or incomplete cache turns the
+    # feature off silently — the PVC then just sits at modifyVolumeStatus
+    # "Pending" forever with nothing logged anywhere. The flag is repeated
+    # rather than replaced when the chart also emits it; both sidecars parse
+    # args with Go's stdlib flag package, where the last occurrence wins.
+    provisioner:
+      additionalArgs:
+        - --feature-gates=VolumeAttributesClass=true
     resizer:
-      leaderElection:
-        enabled: false
-    volumemodifier:
+      # Set via additionalArgs, not leaderElection.enabled below: the chart
+      # renders that as `.enabled | default true`, and Helm's `default`
+      # treats false as unset, so setting it there alone is a no-op. Same
+      # last-occurrence-wins trick as the feature gate above.
+      #
+      # Worth turning off because the resizer and volumemodifier share one
+      # lease name despite being separate containers
+      # (kubernetes-sigs/aws-ebs-csi-driver#1759). volumemodifier is gone as
+      # of the setting above, but with replicaCount 1 there is only ever one
+      # pod, so leader election buys nothing either way.
+      additionalArgs:
+        - --feature-gates=VolumeAttributesClass=true
+        - --leader-election=false
       leaderElection:
         enabled: false
   storageClasses:
