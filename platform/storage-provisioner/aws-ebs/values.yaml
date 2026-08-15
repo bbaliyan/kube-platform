@@ -10,6 +10,30 @@ aws-ebs-csi-driver:
     # storage.data.iops/throughputMBps live (e.g. kube-databases' chart-mssql).
     volumeModificationFeature:
       enabled: true
+  # The volumemodifier sidecar (added by volumeModificationFeature above)
+  # shares a leader-election lease name with the resizer sidecar, even
+  # though they're separate containers — confirmed live: volumemodifier
+  # silently stopped reconciling a PVC after a lease conflict and only a
+  # full pod restart recovered it (kubernetes-sigs/aws-ebs-csi-driver#1759).
+  # Leader election exists to pick one active replica among several; with
+  # controller.replicaCount 1 above, there's only ever one pod, so it has
+  # no purpose here and only costs us this lease collision.
+  #
+  # resizer.leaderElection.enabled below is a no-op — confirmed against the
+  # chart's own controller.yaml: it builds that sidecar's flag as
+  # `.enabled | default true`, and Helm's `default` treats `false` as
+  # "unset" (it's a boolean's zero value), silently forcing true regardless
+  # of what's set here. Left in to record the actual intent, and in case
+  # upstream ever fixes it. It isn't needed for the fix to work: turning
+  # off just volumemodifier's side already removes the contention, since
+  # resizer is then the lease's only participant.
+  sidecars:
+    resizer:
+      leaderElection:
+        enabled: false
+    volumemodifier:
+      leaderElection:
+        enabled: false
   storageClasses:
     - name: ebs-gp3
       annotations:
