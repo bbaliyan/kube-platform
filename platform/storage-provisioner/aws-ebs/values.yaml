@@ -14,38 +14,37 @@ aws-ebs-csi-driver:
       enabled: false
 
   sidecars:
-    # VolumeAttributesClass is the whole mechanism kube-databases uses to
-    # change a volume's IOPS/throughput after creation, so pin its feature
-    # gate on explicitly in both sidecars that implement it.
+    # VolumeAttributesClass is how kube-databases changes a volume's
+    # IOPS/throughput after creation, so both sidecars that implement it get
+    # the feature gate pinned on.
     #
-    # The chart otherwise decides this at render time from
-    # `.Capabilities.APIVersions.Has "…/VolumeAttributesClass"` and renders
-    # `--feature-gates=VolumeAttributesClass=false` when it doesn't find it.
-    # Under Argo CD those capabilities come from its cluster cache rather
-    # than a live discovery call, so a stale or incomplete cache turns the
-    # feature off silently — the PVC then just sits at modifyVolumeStatus
-    # "Pending" forever with nothing logged anywhere. The flag is repeated
-    # rather than replaced when the chart also emits it; both sidecars parse
-    # args with Go's stdlib flag package, where the last occurrence wins.
+    # This is precautionary rather than a fix for anything seen here — the
+    # gate is GA and on by default. But the chart decides it at render time
+    # from `.Capabilities.APIVersions.Has "…/VolumeAttributesClass"` and
+    # emits `--feature-gates=VolumeAttributesClass=false` when it comes up
+    # empty. Under Argo CD those capabilities come from a cached API list
+    # rather than live discovery, and if that ever misses, volume
+    # modification stops working with nothing logged to say why. A pinned
+    # flag is worth the noise against a silent failure like that.
+    #
+    # ON UPGRADE: the sidecars log "setting GA feature gate. It will be
+    # removed in a future release" at startup. Once it is removed, passing
+    # the flag will fail to parse — drop these two lines then.
+    #
+    # (When the chart emits its own value the flag appears twice. Both
+    # sidecars parse with Go's stdlib flag package, so the last wins.)
     provisioner:
       additionalArgs:
         - --feature-gates=VolumeAttributesClass=true
     resizer:
-      # Set via additionalArgs, not leaderElection.enabled below: the chart
-      # renders that as `.enabled | default true`, and Helm's `default`
-      # treats false as unset, so setting it there alone is a no-op. Same
-      # last-occurrence-wins trick as the feature gate above.
-      #
-      # Worth turning off because the resizer and volumemodifier share one
-      # lease name despite being separate containers
-      # (kubernetes-sigs/aws-ebs-csi-driver#1759). volumemodifier is gone as
-      # of the setting above, but with replicaCount 1 there is only ever one
-      # pod, so leader election buys nothing either way.
       additionalArgs:
         - --feature-gates=VolumeAttributesClass=true
+        # With replicaCount 1 there is only ever one pod, so leader election
+        # costs a lease to acquire and buys nothing. Set here rather than via
+        # sidecars.resizer.leaderElection.enabled, which looks like the right
+        # knob but is a no-op: the chart renders it as `.enabled | default
+        # true`, and Helm's `default` treats false as unset.
         - --leader-election=false
-      leaderElection:
-        enabled: false
   storageClasses:
     - name: ebs-gp3
       annotations:
