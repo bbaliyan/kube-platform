@@ -3,37 +3,28 @@
 aws-ebs-csi-driver:
   controller:
     replicaCount: 1
-    # Off by default upstream — without it, the chart never adds the
-    # "volumemodifier" sidecar container to the controller pod at all, so
-    # nothing ever watches PVCs for a VolumeAttributesClass change or calls
-    # AWS's ModifyVolume API. Needed for any workload chart that changes
-    # storage.data.iops/throughputMBps live (e.g. kube-databases' chart-mssql).
+    # OFF, deliberately. This adds the "volumemodifier" sidecar
+    # (volume-modifier-for-k8s) — an older, annotation-driven mechanism
+    # for changing IOPS/throughput that AWS has since deprecated
+    # (kubernetes-sigs/aws-ebs-csi-driver#2435), superseded by native
+    # VolumeAttributesClass support built into the driver itself from
+    # v1.35.0 on (we run v1.63.1) and handled by the resizer sidecar
+    # directly (external-resizer added ControllerModifyVolume-via-VAC
+    # support in v2.2.0; we run v2.2.1) — no extra sidecar needed for the
+    # VolumeAttributesClass-based flow chart-mssql actually uses.
+    #
+    # We turned this on earlier because nothing was calling AWS's
+    # ModifyVolume at the time, without conclusively ruling out resizer
+    # on its own first. volume-modifier-for-k8s turned out to have two
+    # real bugs of its own once live: a leader-election lease collision
+    # with resizer (kubernetes-sigs/aws-ebs-csi-driver#1759), and — even
+    # after fixing that — it would reconcile a PVC once on its own
+    # startup scan and then silently never reprocess it after a later
+    # spec change, needing a manual pod restart to notice again. Given
+    # it's also the deprecated path, fixing forward means not using it
+    # at all rather than continuing to patch around it.
     volumeModificationFeature:
-      enabled: true
-  # The volumemodifier sidecar (added by volumeModificationFeature above)
-  # shares a leader-election lease name with the resizer sidecar, even
-  # though they're separate containers — confirmed live: volumemodifier
-  # silently stopped reconciling a PVC after a lease conflict and only a
-  # full pod restart recovered it (kubernetes-sigs/aws-ebs-csi-driver#1759).
-  # Leader election exists to pick one active replica among several; with
-  # controller.replicaCount 1 above, there's only ever one pod, so it has
-  # no purpose here and only costs us this lease collision.
-  #
-  # resizer.leaderElection.enabled below is a no-op — confirmed against the
-  # chart's own controller.yaml: it builds that sidecar's flag as
-  # `.enabled | default true`, and Helm's `default` treats `false` as
-  # "unset" (it's a boolean's zero value), silently forcing true regardless
-  # of what's set here. Left in to record the actual intent, and in case
-  # upstream ever fixes it. It isn't needed for the fix to work: turning
-  # off just volumemodifier's side already removes the contention, since
-  # resizer is then the lease's only participant.
-  sidecars:
-    resizer:
-      leaderElection:
-        enabled: false
-    volumemodifier:
-      leaderElection:
-        enabled: false
+      enabled: false
   storageClasses:
     - name: ebs-gp3
       annotations:
