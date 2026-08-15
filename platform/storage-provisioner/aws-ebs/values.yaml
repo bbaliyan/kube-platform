@@ -3,28 +3,41 @@
 aws-ebs-csi-driver:
   controller:
     replicaCount: 1
-    # OFF, deliberately. This adds the "volumemodifier" sidecar
-    # (volume-modifier-for-k8s) — an older, annotation-driven mechanism
-    # for changing IOPS/throughput that AWS has since deprecated
-    # (kubernetes-sigs/aws-ebs-csi-driver#2435), superseded by native
-    # VolumeAttributesClass support built into the driver itself from
-    # v1.35.0 on (we run v1.63.1) and handled by the resizer sidecar
-    # directly (external-resizer added ControllerModifyVolume-via-VAC
-    # support in v2.2.0; we run v2.2.1) — no extra sidecar needed for the
-    # VolumeAttributesClass-based flow chart-mssql actually uses.
+    # Adds the "volumemodifier" sidecar, which is what actually calls AWS's
+    # ModifyVolume when a PVC's volumeAttributesClassName changes. Off by
+    # default upstream; without it, IOPS/throughput changes silently never
+    # reach AWS at all.
     #
-    # We turned this on earlier because nothing was calling AWS's
-    # ModifyVolume at the time, without conclusively ruling out resizer
-    # on its own first. volume-modifier-for-k8s turned out to have two
-    # real bugs of its own once live: a leader-election lease collision
-    # with resizer (kubernetes-sigs/aws-ebs-csi-driver#1759), and — even
-    # after fixing that — it would reconcile a PVC once on its own
-    # startup scan and then silently never reprocess it after a later
-    # spec change, needing a manual pod restart to notice again. Given
-    # it's also the deprecated path, fixing forward means not using it
-    # at all rather than continuing to patch around it.
+    # Note this sidecar (volume-modifier-for-k8s) is formally deprecated
+    # (kubernetes-sigs/aws-ebs-csi-driver#2435) in favour of native
+    # VolumeAttributesClass handling in the resizer sidecar. We tried
+    # turning it off to use that path and modifications stopped happening
+    # — a valid change sat at modifyVolumeStatus "Pending" indefinitely
+    # with nothing logging anything — so it's back on until the native
+    # path is verified working here. Revisit on a driver upgrade, but
+    # verify against a real IOPS change before switching, not on the
+    # deprecation notice alone.
     volumeModificationFeature:
-      enabled: false
+      enabled: true
+  # volumemodifier and resizer default to contending for the same
+  # leader-election lease even though they're separate containers
+  # (kubernetes-sigs/aws-ebs-csi-driver#1759) — observed live as
+  # volumemodifier silently going deaf until a pod restart. With
+  # replicaCount 1 there's only ever one pod, so leader election buys us
+  # nothing and costs us that collision.
+  #
+  # Only volumemodifier's setting takes effect: the chart renders resizer's
+  # as `.enabled | default true`, and Helm's `default` treats false as
+  # unset. Set on both anyway to record intent, and because disabling
+  # volumemodifier's side alone is enough — resizer is then the lease's
+  # only participant.
+  sidecars:
+    resizer:
+      leaderElection:
+        enabled: false
+    volumemodifier:
+      leaderElection:
+        enabled: false
   storageClasses:
     - name: ebs-gp3
       annotations:
