@@ -33,3 +33,6 @@ capmoxVersion: "v0.9.0"
 
 # renovate: datasource=helm depName=cluster-autoscaler registryUrl=https://kubernetes.github.io/autoscaler
 clusterAutoscalerVersion: "9.59.0"
+
+# renovate: datasource=helm depName=gpu-operator registryUrl=https://helm.ngc.nvidia.com/nvidia
+gpuOperatorVersion: "v26.3.3"

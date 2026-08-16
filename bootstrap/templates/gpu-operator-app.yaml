@@ -1,0 +1,37 @@
+{{- if .Values.gpuOperatorEnabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gpu-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://helm.ngc.nvidia.com/nvidia
+    chart: gpu-operator
+    targetRevision: {{ .Values.gpuOperatorVersion | quote }}
+    helm:
+      values: |
+        driver:
+          enabled: true
+{{- if .Values.gpuOperatorHelmValues }}
+      # Consumer-specific values (node selector/toleration so the operator's
+      # DaemonSets target only GPU-labeled nodes, time-slicing/MPS config,
+      # etc.) — no generic equivalent to derive, so this is a straight
+      # passthrough, same pattern as storage-provisioner's
+      # storageProvisionerHelmValues.
+      valuesObject:
+{{ .Values.gpuOperatorHelmValues | toYaml | indent 8 }}
+{{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gpu-operator
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+{{- end }}
