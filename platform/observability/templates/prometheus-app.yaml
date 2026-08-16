@@ -151,6 +151,23 @@ spec:
             requests:
               cpu: 10m
               memory: 32Mi
+
+        # RKE2 does not expose etcd's Prometheus metrics on its client port
+        # (2379, mTLS-protected) — it needs etcd-expose-metrics: true set on
+        # the server (kube-compute's node-bootstrap sets this), which then
+        # listens on a separate, dedicated metrics port, 2381. This chart's
+        # own kubeEtcd.service.targetPort default (2379) never matches that,
+        # so the etcd dashboard shows no data regardless of ServiceMonitor
+        # config. RKE2's listen-metrics-urls for this port is plain http://
+        # (confirmed via rancher/rke2 maintainer examples), matching this
+        # chart's own kubeEtcd.serviceMonitor.scheme: http default — no
+        # TLS/client-cert config added here. Not verified against a live
+        # cluster; confirm the scrape actually succeeds before assuming this
+        # is complete.
+        kubeEtcd:
+          service:
+            port: 2381
+            targetPort: 2381
   destination:
     server: https://kubernetes.default.svc
     namespace: prometheus
