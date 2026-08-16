@@ -25,3 +25,48 @@ democratic-csi:
     name: ""
 
   storageClasses: []
+
+  # Every controller/node-plugin container is unset upstream (BestEffort QoS)
+  # — confirmed the first candidates evicted/OOM-killed under real node memory
+  # pressure on a live cluster, ahead of far less critical pods. These are
+  # small, conservative defaults (each container is a thin gRPC sidecar, not
+  # itself I/O- or CPU-heavy) — override per-consumer via
+  # storageProvisionerHelmValues if a specific backend needs more headroom.
+  controller:
+    externalAttacher:
+      resources:
+        requests: {cpu: 10m, memory: 32Mi}
+        limits: {cpu: 100m, memory: 128Mi}
+    externalProvisioner:
+      resources:
+        requests: {cpu: 10m, memory: 32Mi}
+        limits: {cpu: 100m, memory: 128Mi}
+    externalResizer:
+      resources:
+        requests: {cpu: 10m, memory: 32Mi}
+        limits: {cpu: 100m, memory: 128Mi}
+    externalSnapshotter:
+      resources:
+        requests: {cpu: 10m, memory: 32Mi}
+        limits: {cpu: 100m, memory: 128Mi}
+    driver:
+      resources:
+        requests: {cpu: 20m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 256Mi}
+  node:
+    driver:
+      resources:
+        requests: {cpu: 20m, memory: 64Mi}
+        limits: {cpu: 200m, memory: 256Mi}
+    driverRegistrar:
+      resources:
+        requests: {cpu: 10m, memory: 32Mi}
+        limits: {cpu: 100m, memory: 128Mi}
+    cleanup:
+      resources:
+        requests: {cpu: 10m, memory: 32Mi}
+        limits: {cpu: 100m, memory: 128Mi}
+  csiProxy:
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {cpu: 100m, memory: 128Mi}
