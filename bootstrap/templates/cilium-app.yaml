@@ -50,14 +50,13 @@ spec:
         # replicas: 1 for single-node topologies (node-bootstrap's
         # cilium_operator_replicas), but that only covers genesis's initial
         # install — once this Application's own selfHeal reconciles, it has
-        # no topology signal of its own and reverts to the chart default of
-        # 2. Set to 1 here to match, since a single-node cluster is this
-        # project's current primary target; a multi-node consumer will need
-        # a way to override this back up once that topology exists (no
-        # passthrough mechanism for this Application exists yet — unlike
-        # storage-provisioner's storageProvisionerHelmValues).
+        # no topology signal of its own and would otherwise revert to the
+        # chart default of 2. ciliumOperatorReplicas passes the same
+        # topology signal through to this Application (defaults to 1,
+        # matching this project's single-node primary target); a multi-node
+        # consumer overrides it back up once that topology exists.
         operator:
-          replicas: 1
+          replicas: {{ .Values.ciliumOperatorReplicas }}
           tolerations:
             - operator: Exists
         ipam:

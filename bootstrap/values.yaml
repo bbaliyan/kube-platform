@@ -10,6 +10,13 @@ storageProvisionerType: ""      # aws-ebs | democratic-csi | longhorn | local-pa
 storageProvisionerRepoURL: ""   # defaults to platformRepoURL when empty
 storageProvisionerRevision: "main"
 storageProvisionerHelmValues: {}   # backend-specific values for democratic-csi/longhorn (not used by aws-ebs, which derives its own from clusterName/extraTags above) — e.g. driver connection details, storageClasses, replica counts. Set via platform_helm_values_object per-cluster.
+storageProvisionerSecondaryType: ""     # same options as storageProvisionerType — a second, independent instance for a consumer needing two backends/protocols at once (e.g. iSCSI + NFS off two separate democratic-csi releases, since one release can only speak one protocol). Empty disables.
+storageProvisionerSecondaryRepoURL: ""  # defaults to platformRepoURL when empty
+storageProvisionerSecondaryRevision: "main"
+storageProvisionerSecondaryHelmValues: {}
+ciliumOperatorReplicas: 1       # cilium-operator replica count; 1 suits single-node (chart default is 2, needs anti-affinity room to schedule both), multi-node consumers override up
+gpuOperatorEnabled: false       # deploy NVIDIA GPU Operator — off by default; opt in per-cluster
+gpuOperatorHelmValues: {}       # consumer-specific values (node selector/toleration, time-slicing config, etc.) merged over this Application's own driver.enabled: true default
 clusterFqdnSuffix: ""
 trustedCaPemB64: ""
 traefikExtraConfig: {}          # traefikExtraConfig.ports entries are merged into traefik's ports block (web/websecure are always present)
