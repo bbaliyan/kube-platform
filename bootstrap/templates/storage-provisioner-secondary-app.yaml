@@ -1,0 +1,54 @@
+{{- if .Values.storageProvisionerSecondaryType }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: storage-provisioner-secondary
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.storageProvisionerSecondaryRepoURL | default .Values.platformRepoURL }}
+    targetRevision: {{ .Values.storageProvisionerSecondaryRevision }}
+    path: platform/storage-provisioner/{{ .Values.storageProvisionerSecondaryType }}
+{{- if eq .Values.storageProvisionerSecondaryType "aws-ebs" }}
+    helm:
+      valuesObject:
+        aws-ebs-csi-driver:
+          controller:
+            # Tags dynamically-provisioned EBS volumes with the owning cluster
+            # (and any operator-supplied tags) so they're identifiable — and
+            # sweepable — if the node is destroyed before the CSI driver gets
+            # a chance to release them via reclaimPolicy: Delete.
+            extraVolumeTags:
+              {{- if .Values.clusterName }}
+              Name: {{ printf "kube-node-%s-pv" .Values.clusterName | quote }}
+              ClusterName: {{ .Values.clusterName | quote }}
+              {{- end }}
+              {{- range $k, $v := .Values.extraTags }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+{{- else if .Values.storageProvisionerSecondaryHelmValues }}
+    helm:
+      # Generic passthrough for any backend other than aws-ebs (which derives
+      # its values above from generic clusterName/extraTags inputs instead).
+      # democratic-csi/longhorn need fully consumer-supplied, backend-specific
+      # values (NAS connection details, dataset layout, replica counts, ...)
+      # that have no generic equivalent to derive from — the consumer sets
+      # storageProvisionerSecondaryHelmValues directly via
+      # platform_helm_values_object.
+      valuesObject:
+{{ .Values.storageProvisionerSecondaryHelmValues | toYaml | indent 8 }}
+{{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+{{- end }}
