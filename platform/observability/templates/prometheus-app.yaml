@@ -81,6 +81,16 @@ spec:
                 gnetId: 14584
                 revision: 1
                 datasource: Prometheus
+              # Community CronJob/Job dashboard (grafana.com/dashboards/14279),
+              # kube-state-metrics based — no extra scrape config needed, this
+              # chart already deploys kube-state-metrics. Single revision
+              # since 2021 (unmaintained but still functional: the
+              # kube_job_status_*/kube_cronjob_* metric names it queries
+              # haven't changed).
+              cronjobs:
+                gnetId: 14279
+                revision: 1
+                datasource: Prometheus
 
         prometheus:
           # The bootstrap Argo CD install does not create metrics Services, but
