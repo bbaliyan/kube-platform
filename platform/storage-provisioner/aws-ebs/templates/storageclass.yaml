@@ -1,7 +1,17 @@
----
 # Ensure the ebs-gp3 class is explicitly marked as the cluster default.
 # This resource is declarative and idempotent; the dependency chart may also
 # create it — ServerSideApply in the Argo CD sync options handles the merge.
+#
+# No sibling job demotes local-path's default-class annotation here: RKE2
+# doesn't bundle local-path-provisioner (that's a k3s default, not RKE2's —
+# this platform installs it itself, only under platform/storage-provisioner/
+# local-path/, and only when a consumer explicitly selects it via
+# storageProvisionerType/-Secondary). No consumer in this repo currently
+# pairs "local-path" with "aws-ebs" on the same cluster, so there is no
+# competing default to demote. If that combination is ever needed, the
+# arbitration belongs at the bootstrap/app-of-apps level (symmetric across
+# all backend pairs), not as one backend's chart reaching into another's
+# StorageClass by hardcoded name.
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -14,79 +24,3 @@ reclaimPolicy: Delete
 parameters:
   type: gp3
   encrypted: "true"
----
-# Post-install Job that removes the default-class annotation from local-path
-# so that ebs-gp3 becomes the sole default storage class on the cluster.
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: local-path-deprioritise
-  namespace: kube-system
-  annotations:
-    helm.sh/hook: post-install,post-upgrade
-    helm.sh/hook-weight: "0"
-    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: local-path-deprioritise
-  annotations:
-    helm.sh/hook: post-install,post-upgrade
-    helm.sh/hook-weight: "0"
-    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
-rules:
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["storageclasses"]
-    verbs: ["get", "patch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: local-path-deprioritise
-  annotations:
-    helm.sh/hook: post-install,post-upgrade
-    helm.sh/hook-weight: "0"
-    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: local-path-deprioritise
-subjects:
-  - kind: ServiceAccount
-    name: local-path-deprioritise
-    namespace: kube-system
----
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: local-path-deprioritise
-  namespace: kube-system
-  annotations:
-    helm.sh/hook: post-install,post-upgrade
-    helm.sh/hook-weight: "1"
-    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
-spec:
-  backoffLimit: 3
-  template:
-    spec:
-      restartPolicy: OnFailure
-      serviceAccountName: local-path-deprioritise
-      containers:
-        - name: patch
-          # kuberlr-kubectl, not a plain versioned kubectl image: it detects
-          # the target apiserver's version at runtime and execs the matching
-          # bundled kubectl binary itself (no internet access needed —
-          # binaries are baked into the image), so this tag only needs
-          # bumping when a cluster's k8s version moves outside what a given
-          # kuberlr-kubectl release bundles, not on every cluster upgrade.
-          # Same image already used by chart-mssql's backup trigger.
-          image: rancher/kuberlr-kubectl:v8.1.1
-          command:
-            - kubectl
-            - patch
-            - storageclass
-            - local-path
-            - --type=merge
-            - -p
-            - '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
