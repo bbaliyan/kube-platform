@@ -74,7 +74,14 @@ spec:
       serviceAccountName: local-path-deprioritise
       containers:
         - name: patch
-          image: bitnami/kubectl:latest
+          # kuberlr-kubectl, not a plain versioned kubectl image: it detects
+          # the target apiserver's version at runtime and execs the matching
+          # bundled kubectl binary itself (no internet access needed —
+          # binaries are baked into the image), so this tag only needs
+          # bumping when a cluster's k8s version moves outside what a given
+          # kuberlr-kubectl release bundles, not on every cluster upgrade.
+          # Same image already used by chart-mssql's backup trigger.
+          image: rancher/kuberlr-kubectl:v8.1.1
           command:
             - kubectl
             - patch
