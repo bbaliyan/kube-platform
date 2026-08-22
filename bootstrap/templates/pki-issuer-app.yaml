@@ -24,6 +24,8 @@ spec:
           value: {{ .Values.vaultAddr | quote }}
         - name: vaultRole
           value: {{ .Values.vaultRole | quote }}
+        - name: vaultAuthMountPath
+          value: {{ .Values.vaultAuthMountPath | quote }}
         - name: azureKeyVaultUrl
           value: {{ .Values.azureKeyVaultUrl | quote }}
         - name: azureTenantId

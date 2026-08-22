@@ -57,6 +57,7 @@ repoCredsUsername: ""
 # Vault backend (secretStoreType: vault)
 vaultAddr: ""         # e.g. http://192.168.1.20:8200
 vaultRole: ""         # Vault Kubernetes auth role bound to ESO's service account
+vaultAuthMountPath: "kubernetes"   # Vault/OpenBao Kubernetes-auth mount path this cluster was registered under
 vaultSecretPath: ""   # Full KV v2 path e.g. secret/data/kube/cluster-1/repo-cred
 
 # AWS SSM backend (secretStoreType: aws-ssm)
