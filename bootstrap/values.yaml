@@ -6,18 +6,20 @@ certMode: selfsigned
 clusterName: ""                 # raw cluster identifier — used to tag dynamically-provisioned storage
 clusterAutoscalerEnabled: false # deploy cluster-autoscaler (CAPI cloudProvider) — off by default; opt in per-cluster
 extraTags: {}                    # arbitrary tags forwarded from node-aws's extra_tags, applied to CSI-provisioned storage
-storageProvisionerType: ""      # aws-ebs | democratic-csi | longhorn | local-path — empty disables
-storageProvisionerRepoURL: ""   # defaults to platformRepoURL when empty
-storageProvisionerRevision: "main"
-storageProvisionerHelmValues: {}   # backend-specific values for democratic-csi/longhorn (not used by aws-ebs, which derives its own from clusterName/extraTags above) — e.g. driver connection details, storageClasses, replica counts. Set via platform_helm_values_object per-cluster.
-storageProvisionerSecondaryType: ""     # same options as storageProvisionerType — a second, independent instance for a consumer needing two backends/protocols at once (e.g. iSCSI + NFS off two separate democratic-csi releases, since one release can only speak one protocol). Empty disables.
-storageProvisionerSecondaryRepoURL: ""  # defaults to platformRepoURL when empty
-storageProvisionerSecondaryRevision: "main"
-storageProvisionerSecondaryHelmValues: {}
-storageProvisionerTertiaryType: ""      # same options as storageProvisionerType — a third, independent instance for a consumer needing three backends/protocols at once (e.g. both iSCSI pools already used by primary+secondary, so a third democratic-csi release is needed for NFS/RWX). Empty disables.
-storageProvisionerTertiaryRepoURL: ""   # defaults to platformRepoURL when empty
-storageProvisionerTertiaryRevision: "main"
-storageProvisionerTertiaryHelmValues: {}
+# One Argo CD Application per entry (named storage-provisioner-<name>) — add
+# as many backends as the cluster needs (e.g. one democratic-csi release per
+# NAS pool/protocol) instead of being capped at a fixed number of slots. Set
+# via platform_helm_values_object per-cluster; empty list deploys none.
+#   - name: iscsi-bulk          # Application name suffix — pick something that
+#                                # describes the backend, not an ordinal
+#     type: democratic-csi      # aws-ebs | democratic-csi | longhorn | local-path
+#     repoURL: ""                # defaults to platformRepoURL when empty
+#     revision: main
+#     helmValues: {}             # backend-specific values (driver connection
+#                                 # details, storageClasses, replica counts —
+#                                 # ignored for aws-ebs, which derives its own
+#                                 # from clusterName/extraTags above)
+storageProvisioners: []
 ciliumOperatorReplicas: 1       # cilium-operator replica count; 1 suits single-node (chart default is 2, needs anti-affinity room to schedule both), multi-node consumers override up
 gpuOperatorEnabled: false       # deploy NVIDIA GPU Operator — off by default; opt in per-cluster
 hubbleEnabled: false            # enable Hubble relay/UI/metrics and the matching Grafana dashboards — off by default; opt in per-cluster (see cilium-app.yaml and observability's prometheus-app.yaml)

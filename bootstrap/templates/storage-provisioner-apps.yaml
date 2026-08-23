@@ -1,18 +1,21 @@
-{{- if .Values.storageProvisionerType }}
+{{- range $i, $sp := .Values.storageProvisioners }}
+{{- if $i }}
+---
+{{- end }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: storage-provisioner
+  name: storage-provisioner-{{ $sp.name }}
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   project: default
   source:
-    repoURL: {{ .Values.storageProvisionerRepoURL | default .Values.platformRepoURL }}
-    targetRevision: {{ .Values.storageProvisionerRevision }}
-    path: platform/storage-provisioner/{{ .Values.storageProvisionerType }}
-{{- if eq .Values.storageProvisionerType "aws-ebs" }}
+    repoURL: {{ $sp.repoURL | default $.Values.platformRepoURL }}
+    targetRevision: {{ $sp.revision | default "main" }}
+    path: platform/storage-provisioner/{{ $sp.type }}
+{{- if eq $sp.type "aws-ebs" }}
     helm:
       valuesObject:
         aws-ebs-csi-driver:
@@ -22,23 +25,24 @@ spec:
             # sweepable — if the node is destroyed before the CSI driver gets
             # a chance to release them via reclaimPolicy: Delete.
             extraVolumeTags:
-              {{- if .Values.clusterName }}
-              Name: {{ printf "kube-node-%s-pv" .Values.clusterName | quote }}
-              ClusterName: {{ .Values.clusterName | quote }}
+              {{- if $.Values.clusterName }}
+              Name: {{ printf "kube-node-%s-pv" $.Values.clusterName | quote }}
+              ClusterName: {{ $.Values.clusterName | quote }}
               {{- end }}
-              {{- range $k, $v := .Values.extraTags }}
+              {{- range $k, $v := $.Values.extraTags }}
               {{ $k }}: {{ $v | quote }}
               {{- end }}
-{{- else if .Values.storageProvisionerHelmValues }}
+{{- else if $sp.helmValues }}
     helm:
       # Generic passthrough for any backend other than aws-ebs (which derives
       # its values above from generic clusterName/extraTags inputs instead).
       # democratic-csi/longhorn need fully consumer-supplied, backend-specific
       # values (NAS connection details, dataset layout, replica counts, ...)
-      # that have no generic equivalent to derive from — the consumer sets
-      # storageProvisionerHelmValues directly via platform_helm_values_object.
+      # that have no generic equivalent to derive from — each entry sets its
+      # own helmValues directly via the storageProvisioners list in
+      # platform_helm_values_object.
       valuesObject:
-{{ .Values.storageProvisionerHelmValues | toYaml | indent 8 }}
+{{ $sp.helmValues | toYaml | indent 8 }}
 {{- end }}
   destination:
     server: https://kubernetes.default.svc
