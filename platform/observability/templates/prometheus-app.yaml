@@ -98,11 +98,18 @@ spec:
               # once cilium-app.yaml's hubbleEnabled branch has actually
               # deployed hubble-relay/hubble-ui and the metrics
               # ServiceMonitor; kept in lockstep via the same Values key.
+              #
+              # NOTE: examples/kubernetes/addons/prometheus/files/grafana-dashboards/*
+              # are git symlinks in the cilium repo, not real files --
+              # raw.githubusercontent.com serves symlinks as the literal link-target
+              # string, not the JSON they point to (confirmed live: Grafana wrote
+              # a ~90-byte file containing the relative path text, not a dashboard).
+              # Use the real files the symlinks point at instead.
               cilium:
-                url: https://raw.githubusercontent.com/cilium/cilium/main/examples/kubernetes/addons/prometheus/files/grafana-dashboards/cilium-dashboard.json
+                url: https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/cilium-agent/dashboards/cilium-dashboard.json
                 datasource: Prometheus
               hubble:
-                url: https://raw.githubusercontent.com/cilium/cilium/main/examples/kubernetes/addons/prometheus/files/grafana-dashboards/hubble-dashboard.json
+                url: https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/cilium/files/hubble/dashboards/hubble-dashboard.json
                 datasource: Prometheus
 {{- end }}
 
