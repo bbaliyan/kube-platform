@@ -19,6 +19,8 @@ spec:
           value: {{ .Values.platformRepoURL | quote }}
         - name: platformRevision
           value: {{ .Values.platformRevision | quote }}
+        - name: hubbleEnabled
+          value: {{ .Values.hubbleEnabled | default false | quote }}
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

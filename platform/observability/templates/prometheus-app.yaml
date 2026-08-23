@@ -91,6 +91,20 @@ spec:
                 gnetId: 14279
                 revision: 1
                 datasource: Prometheus
+{{- if .Values.hubbleEnabled }}
+              # Upstream Cilium project's own dashboards (not published under
+              # a grafana.com gnetId), fetched by URL at pod start — same
+              # sidecar mechanism as the gnetId dashboards above. Only useful
+              # once cilium-app.yaml's hubbleEnabled branch has actually
+              # deployed hubble-relay/hubble-ui and the metrics
+              # ServiceMonitor; kept in lockstep via the same Values key.
+              cilium:
+                url: https://raw.githubusercontent.com/cilium/cilium/main/examples/kubernetes/addons/prometheus/files/grafana-dashboards/cilium-dashboard.json
+                datasource: Prometheus
+              hubble:
+                url: https://raw.githubusercontent.com/cilium/cilium/main/examples/kubernetes/addons/prometheus/files/grafana-dashboards/hubble-dashboard.json
+                datasource: Prometheus
+{{- end }}
 
         prometheus:
           # The bootstrap Argo CD install does not create metrics Services, but

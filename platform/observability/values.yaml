@@ -11,3 +11,9 @@ clusterFqdnSuffix: ""
 # Set by the parent bootstrap Application so all sub-apps come from the same repo.
 platformRepoURL: ""
 platformRevision: main
+
+# Adds the Cilium/Hubble Grafana dashboards. Set by the parent bootstrap
+# Application from its own hubbleEnabled — keep in sync with whether
+# cilium-app.yaml actually deployed hubble-relay/hubble-ui, or the dashboards
+# show no data.
+hubbleEnabled: false

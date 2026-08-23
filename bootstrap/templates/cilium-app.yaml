@@ -62,6 +62,35 @@ spec:
         ipam:
           operator:
             clusterPoolIPv4PodCIDRList: ["10.42.0.0/16"]
+{{- if .Values.hubbleEnabled }}
+        # Hubble's local per-node observer (hubble.enabled) is already on by
+        # the chart's own default — only relay (cluster-wide flow
+        # aggregation) and ui are opt-in. metrics.serviceMonitor carries the
+        # "release: prometheus" label because kube-prometheus-stack's
+        # Prometheus only scrapes ServiceMonitors bearing that label by
+        # default (serviceMonitorSelectorNilUsesHelmValues) — this
+        # Application's own release name is "prometheus" (see
+        # observability/templates/prometheus-app.yaml's fullnameOverride).
+        hubble:
+          relay:
+            enabled: true
+          ui:
+            enabled: true
+          metrics:
+            enableOpenMetrics: true
+            enabled:
+              - dns
+              - drop
+              - tcp
+              - flow
+              - port-distribution
+              - icmp
+              - "httpV2:exemplars=true;labelsContext=source_namespace,source_workload,destination_namespace,destination_workload,traffic_direction"
+            serviceMonitor:
+              enabled: true
+              labels:
+                release: prometheus
+{{- end }}
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
