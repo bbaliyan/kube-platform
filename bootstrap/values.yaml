@@ -14,6 +14,10 @@ storageProvisionerSecondaryType: ""     # same options as storageProvisionerType
 storageProvisionerSecondaryRepoURL: ""  # defaults to platformRepoURL when empty
 storageProvisionerSecondaryRevision: "main"
 storageProvisionerSecondaryHelmValues: {}
+storageProvisionerTertiaryType: ""      # same options as storageProvisionerType — a third, independent instance for a consumer needing three backends/protocols at once (e.g. both iSCSI pools already used by primary+secondary, so a third democratic-csi release is needed for NFS/RWX). Empty disables.
+storageProvisionerTertiaryRepoURL: ""   # defaults to platformRepoURL when empty
+storageProvisionerTertiaryRevision: "main"
+storageProvisionerTertiaryHelmValues: {}
 ciliumOperatorReplicas: 1       # cilium-operator replica count; 1 suits single-node (chart default is 2, needs anti-affinity room to schedule both), multi-node consumers override up
 gpuOperatorEnabled: false       # deploy NVIDIA GPU Operator — off by default; opt in per-cluster
 hubbleEnabled: false            # enable Hubble relay/UI/metrics and the matching Grafana dashboards — off by default; opt in per-cluster (see cilium-app.yaml and observability's prometheus-app.yaml)
