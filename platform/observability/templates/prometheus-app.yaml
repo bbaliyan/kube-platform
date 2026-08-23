@@ -106,6 +106,24 @@ spec:
                 datasource: Prometheus
 {{- end }}
 
+        prometheusOperator:
+          # Route the admission-webhook TLS cert through cert-manager instead
+          # of the chart's default self-signed create/patch Jobs. Those Jobs
+          # set ttlSecondsAfterFinished and self-delete right after running —
+          # Kubernetes' TTL controller does this outside Argo CD's control,
+          # and Argo CD's Helm-hook tracking then finds the Job "missing" on
+          # every following sync and fails permanently (observed on
+          # cluster-media: SyncError, "Resource batch/Job/prometheus-admission-create
+          # is missing"). certManager.enabled removes the Jobs entirely —
+          # confirmed via `helm template` with this flag set that no Job
+          # manifests are rendered, only a cert-manager Certificate.
+          admissionWebhooks:
+            certManager:
+              enabled: true
+              issuerRef:
+                name: {{ .Values.issuerName | quote }}
+                kind: ClusterIssuer
+
         prometheus:
           # The bootstrap Argo CD install does not create metrics Services, but
           # every component pod exposes a container port named "metrics"

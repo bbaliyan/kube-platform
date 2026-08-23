@@ -17,3 +17,11 @@ platformRevision: main
 # cilium-app.yaml actually deployed hubble-relay/hubble-ui, or the dashboards
 # show no data.
 hubbleEnabled: false
+
+# ClusterIssuer used to mint the prometheus-operator admission-webhook TLS
+# cert via cert-manager (see prometheus-app.yaml) instead of the chart's
+# default self-signed create/patch Jobs — those Jobs self-delete via
+# ttlSecondsAfterFinished, which Argo CD's Helm-hook tracking then sees as
+# "resource missing" on every subsequent sync and fails permanently. Set by
+# the parent bootstrap Application from its own pkiIssuerName.
+issuerName: platform-issuer

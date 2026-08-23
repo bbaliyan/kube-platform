@@ -72,7 +72,16 @@ spec:
               memory: 256Mi
             limits:
               cpu: 1000m
-              memory: 1Gi
+              # Overridable per-cluster via argocdControllerMemoryLimit
+              # (platform_extra_helm_parameters) -- the 1Gi default below was
+              # calibrated against cluster-1's own tree size only. This
+              # controller also reconciles whatever consumer/workload
+              # Applications the cluster runs on top of the platform tree, so
+              # a cluster with a larger workload tree (e.g. cluster-media's
+              # kube-workload-media apps) genuinely needs more than a
+              # platform-only cluster does -- no single hardcoded value fits
+              # every consumer.
+              memory: {{ .Values.argocdControllerMemoryLimit | quote }}
           readinessProbe:
             timeoutSeconds: 5
             failureThreshold: 5
