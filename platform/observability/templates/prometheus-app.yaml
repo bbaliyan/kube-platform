@@ -195,11 +195,20 @@ spec:
               cpu: 10m
               memory: 32Mi
 
-        nodeExporter:
+        # NOTE: kube-prometheus-stack's own top-level `nodeExporter:` key only
+        # has enabled/operatingSystems/forceDeployDashboards -- resources and
+        # tolerations both live under the prometheus-node-exporter subchart's
+        # own namespace instead. A prior `nodeExporter: resources:` here was
+        # a silent no-op (confirmed live: the DaemonSet rendered
+        # resources: {}) -- fixed here alongside adding tolerations, which
+        # would have no-op'd the same way under the wrong key.
+        prometheus-node-exporter:
           resources:
             requests:
               cpu: 10m
               memory: 32Mi
+          tolerations:
+{{ .Values.nodeExporterTolerations | toYaml | indent 12 }}
 
         # RKE2 does not expose etcd's Prometheus metrics on its client port
         # (2379, mTLS-protected) — it needs etcd-expose-metrics: true set on

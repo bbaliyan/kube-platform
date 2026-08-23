@@ -25,3 +25,9 @@ hubbleEnabled: false
 # "resource missing" on every subsequent sync and fails permanently. Set by
 # the parent bootstrap Application from its own pkiIssuerName.
 issuerName: platform-issuer
+
+# Extra tolerations for the node-exporter DaemonSet, so it still runs on a
+# node carrying a custom taint (e.g. a dedicated-workload taint) instead of
+# going dark in monitoring for exactly the node most worth watching. Empty
+# by default -- most clusters have no tainted nodes.
+nodeExporterTolerations: []

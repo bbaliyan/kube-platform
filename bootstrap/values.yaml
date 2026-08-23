@@ -23,6 +23,7 @@ storageProvisioners: []
 ciliumOperatorReplicas: 1       # cilium-operator replica count; 1 suits single-node (chart default is 2, needs anti-affinity room to schedule both), multi-node consumers override up
 gpuOperatorEnabled: false       # deploy NVIDIA GPU Operator — off by default; opt in per-cluster
 hubbleEnabled: false            # enable Hubble relay/UI/metrics and the matching Grafana dashboards — off by default; opt in per-cluster (see cilium-app.yaml and observability's prometheus-app.yaml)
+observabilityExtraHelmValues: {} # generic passthrough forwarded as helm.valuesObject on the observability Application, merged over platform/observability's own values.yaml (e.g. nodeExporterTolerations for a node carrying a custom taint) — set via platform_helm_values_object per-cluster
 gpuOperatorHelmValues: {}       # consumer-specific values (node selector/toleration, time-slicing config, etc.) merged over this Application's own driver.enabled: true default
 clusterFqdnSuffix: ""
 trustedCaPemB64: ""
