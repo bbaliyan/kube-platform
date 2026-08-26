@@ -26,6 +26,19 @@ spec:
         kubeProxyReplacement: true
         k8sServiceHost: "127.0.0.1"
         k8sServicePort: 6443
+        # Chart default is false: a ConfigMap-only change (any value below)
+        # otherwise never reaches the already-running agent — it sits
+        # silently applied in the ConfigMap while cilium-agent keeps running
+        # with its original flags, only surfacing as a "Mismatch found"
+        # config-drift-checker warning in the agent's own logs, not as
+        # anything Argo CD or kubectl rollout status would ever flag (no pod
+        # template diff is produced without this, so there's nothing for the
+        # DaemonSet controller to roll). True makes every sync here
+        # authoritative at the cost of a brief dataplane restart per node on
+        # each Cilium config change — acceptable on this project's
+        # single-node primary target, and no worse than any other DaemonSet
+        # config rollout on a multi-node one.
+        rollOutCiliumPods: true
         # Node IPAM LB is this platform's LoadBalancer mechanism on every
         # provider (replaced MetalLB). It advertises the node's own IP into a
         # LoadBalancer Service's status; the node IP is natively routable on a
