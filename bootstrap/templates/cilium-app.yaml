@@ -59,10 +59,33 @@ spec:
           replicas: {{ .Values.ciliumOperatorReplicas }}
           tolerations:
             - operator: Exists
+{{- if .Values.hubbleEnabled }}
+          # cilium-operator's own metrics (port 9963) — separate from both
+          # cilium-agent's below and hubble.metrics below; the Cilium Metrics
+          # dashboard (cilium-dashboard.json) reads panels sourced from all
+          # three, so it stays empty unless each ServiceMonitor exists.
+          prometheus:
+            enabled: true
+            serviceMonitor:
+              enabled: true
+              labels:
+                release: prometheus
+{{- end }}
         ipam:
           operator:
             clusterPoolIPv4PodCIDRList: ["10.42.0.0/16"]
 {{- if .Values.hubbleEnabled }}
+        # cilium-agent's own core metrics (drops/forwards/policy/endpoints/BPF
+        # map pressure, port 9962) — what the Cilium Metrics dashboard
+        # (cilium-dashboard.json) actually plots. Distinct from hubble.metrics
+        # below (Hubble flow metrics, port 9965, backs the Hubble dashboard
+        # instead) — enabling only one leaves the other dashboard empty.
+        prometheus:
+          enabled: true
+          serviceMonitor:
+            enabled: true
+            labels:
+              release: prometheus
         # Hubble's local per-node observer (hubble.enabled) is already on by
         # the chart's own default — only relay (cluster-wide flow
         # aggregation) and ui are opt-in. metrics.serviceMonitor carries the
