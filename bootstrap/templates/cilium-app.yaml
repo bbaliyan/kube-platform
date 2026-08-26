@@ -80,8 +80,19 @@ spec:
         # (cilium-dashboard.json) actually plots. Distinct from hubble.metrics
         # below (Hubble flow metrics, port 9965, backs the Hubble dashboard
         # instead) — enabling only one leaves the other dashboard empty.
+        #
+        # The dashboard's kvstore panels stay empty regardless of anything
+        # here — this platform runs identityAllocationMode: crd (the chart
+        # default, no kvstore: set), so there is no etcd/consul backend for
+        # those metrics to ever report on. bpf_syscall_duration_seconds is
+        # the one dashboard metric that's genuinely opt-in (a per-syscall
+        # histogram, disabled by default for cost) rather than just idle —
+        # enabled explicitly here for the "# system calls"/"system call
+        # latency" panels.
         prometheus:
           enabled: true
+          metrics:
+            - "+bpf_syscall_duration_seconds"
           serviceMonitor:
             enabled: true
             labels:
