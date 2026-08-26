@@ -101,11 +101,18 @@ spec:
         # the one dashboard metric that's genuinely opt-in (a per-syscall
         # histogram, disabled by default for cost) rather than just idle —
         # enabled explicitly here for the "# system calls"/"system call
-        # latency" panels.
+        # latency" panels. Must be the FULL metric name including the
+        # "cilium_" namespace, not the short form the upstream metrics docs
+        # table uses — cilium-agent's --metrics flag parser looks up each
+        # entry by the metric's ConfigName verbatim (pkg/metrics/registry.go),
+        # which for this one is "cilium_bpf_syscall_duration_seconds"; a
+        # non-matching name is silently ignored (no error, no log), so a
+        # wrong short-form value looks identical to a working one until you
+        # check cilium-dbg metrics list on the agent itself.
         prometheus:
           enabled: true
           metrics:
-            - "+bpf_syscall_duration_seconds"
+            - "+cilium_bpf_syscall_duration_seconds"
           serviceMonitor:
             enabled: true
             labels:
