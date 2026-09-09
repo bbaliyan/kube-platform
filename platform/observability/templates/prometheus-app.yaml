@@ -24,6 +24,12 @@ spec:
         fullnameOverride: prometheus
 
         grafana:
+{{- if .Values.grafanaPlugins }}
+          plugins:
+{{- range .Values.grafanaPlugins }}
+            - {{ . | quote }}
+{{- end }}
+{{- end }}
           persistence:
             enabled: true
             size: 5Gi

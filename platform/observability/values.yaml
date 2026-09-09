@@ -26,6 +26,25 @@ hubbleEnabled: false
 # the parent bootstrap Application from its own pkiIssuerName.
 issuerName: platform-issuer
 
+# Grafana plugins installed at startup, as plugin ids optionally followed by
+# a version ("mssql" for the latest, "mssql 13.0.4" to pin).
+#
+# Grafana 13.2 unbundled several datasources that used to ship inside core,
+# Microsoft SQL Server among them. A cluster whose workloads self-register an
+# mssql datasource (kube-databases does) now has to list it here, or Grafana
+# resolves nothing for that uid and every panel reads "Data source not found"
+# while the dashboard itself still renders.
+#
+# Opt-in per cluster rather than a platform-wide default, because the chart
+# wires this to GF_PLUGINS_PREINSTALL_SYNC: Grafana blocks its own startup
+# until each plugin is fetched from grafana.com. On a cluster with no egress
+# there, a non-empty list stops Grafana coming up at all.
+#
+# Idempotent by construction. Grafana skips any plugin already present under
+# /var/lib/grafana/plugins, which is on this chart's PVC, so restarts and
+# re-syncs re-download nothing.
+grafanaPlugins: []
+
 # Extra tolerations for the node-exporter DaemonSet, so it still runs on a
 # node carrying a custom taint (e.g. a dedicated-workload taint) instead of
 # going dark in monitoring for exactly the node most worth watching. Empty
