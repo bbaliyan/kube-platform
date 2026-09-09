@@ -27,22 +27,41 @@ hubbleEnabled: false
 issuerName: platform-issuer
 
 # Grafana plugins installed at startup, as plugin ids optionally followed by
-# a version ("mssql" for the latest, "mssql 13.0.4" to pin).
+# a version ("mssql" for the latest, "mssql 13.0.4" to pin). This is the
+# chart's own plugins value, which is the mechanism Grafana documents for
+# Kubernetes; nothing here hand-rolls an installer.
 #
-# Grafana 13.2 unbundled several datasources that used to ship inside core,
+# Grafana 13.2 moved several datasources out of core into standalone plugins,
 # Microsoft SQL Server among them. A cluster whose workloads self-register an
-# mssql datasource (kube-databases does) now has to list it here, or Grafana
-# resolves nothing for that uid and every panel reads "Data source not found"
-# while the dashboard itself still renders.
+# mssql datasource (kube-databases does) lists it here.
 #
-# Opt-in per cluster rather than a platform-wide default, because the chart
-# wires this to GF_PLUGINS_PREINSTALL_SYNC: Grafana blocks its own startup
-# until each plugin is fetched from grafana.com. On a cluster with no egress
-# there, a non-empty list stops Grafana coming up at all.
+# A non-empty list also turns on shadowBundledPlugins (see prometheus-app.yaml),
+# and the two are inseparable on Grafana 13. The chart wires plugins to
+# GF_PLUGINS_PREINSTALL_SYNC; Grafana finds the plugin already present in the
+# image's bundled directory, tries to replace it with the newer release, and
+# cannot, because that path is inside the read-only image:
 #
-# Idempotent by construction. Grafana skips any plugin already present under
-# /var/lib/grafana/plugins, which is on this chart's PVC, so restarts and
-# re-syncs re-download nothing.
+#   failed to install plugin mssql@: unlinkat
+#   /usr/share/grafana/data/plugins-bundled/mssql: read-only file system
+#
+# Preinstall is synchronous, so that failure takes the whole pod down rather
+# than degrading. shadowBundledPlugins mounts an emptyDir over that directory,
+# so the install lands in /var/lib/grafana/plugins on this chart's PVC instead.
+#
+# The chart warns that shadowing hides bundled plugins not listed here. Measured
+# against grafana 13.2.1-distroless, that is narrower than it sounds: the 13
+# bundled entries (prometheus, loki, elasticsearch, postgres, mysql, tempo and
+# so on) all still register, because the image carries them outside that
+# directory too. Plugins loaded drops from 51 to 38 as the duplicates stop
+# being counted, and the same 18 backends come up either way. Re-measure this
+# on a major Grafana bump before assuming it still holds.
+#
+# Opt-in per cluster rather than a platform-wide default: preinstall blocks
+# startup until each plugin is fetched from grafana.com, so on a cluster with
+# no egress there a non-empty list stops Grafana coming up at all.
+#
+# Idempotent. Grafana skips a plugin already present under
+# /var/lib/grafana/plugins, so restarts and re-syncs re-download nothing.
 grafanaPlugins: []
 
 # Extra tolerations for the node-exporter DaemonSet, so it still runs on a
