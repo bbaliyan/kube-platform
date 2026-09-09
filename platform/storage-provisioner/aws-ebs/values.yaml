@@ -51,6 +51,10 @@ aws-ebs-csi-driver:
         storageclass.kubernetes.io/is-default-class: "true"
       volumeBindingMode: WaitForFirstConsumer
       reclaimPolicy: Delete
+      # Kept in step with templates/storageclass.yaml, which explains it. The
+      # upstream template emits only the keys present here, so omitting it
+      # leaves the class unable to expand.
+      allowVolumeExpansion: true
       parameters:
         type: gp3
         encrypted: "true"
