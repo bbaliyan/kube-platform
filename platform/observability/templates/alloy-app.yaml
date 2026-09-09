@@ -10,6 +10,7 @@ spec:
   source:
     repoURL: https://grafana.github.io/helm-charts
     chart: alloy
+    # renovate: datasource=helm depName=alloy registryUrl=https://grafana.github.io/helm-charts
     targetRevision: "1.10.0"
     helm:
       values: |

@@ -11,6 +11,7 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
+    # renovate: datasource=helm depName=external-secrets registryUrl=https://charts.external-secrets.io
     targetRevision: "2.7.0"
   destination:
     server: https://kubernetes.default.svc
