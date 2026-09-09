@@ -12,7 +12,7 @@
 # and StorageClass settings are parameterized here.
 image:
   repository: docker.io/rancher/local-path-provisioner
-  tag: v0.0.36
+  tag: v0.0.37
 
 # Path used on every node unless overridden per-node — see upstream's
 # nodePathMap docs for per-node overrides
