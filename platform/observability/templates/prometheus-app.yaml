@@ -29,6 +29,8 @@ spec:
 {{- range .Values.grafanaPlugins }}
             - {{ . | quote }}
 {{- end }}
+          # Mandatory alongside plugins on Grafana 13. See values.yaml.
+          shadowBundledPlugins: true
 {{- end }}
           persistence:
             enabled: true
