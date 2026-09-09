@@ -10,6 +10,7 @@ spec:
   source:
     repoURL: https://helm.traefik.io/traefik
     chart: traefik
+    # renovate: datasource=helm depName=traefik registryUrl=https://helm.traefik.io/traefik
     targetRevision: "41.0.1"
     helm:
       values: |

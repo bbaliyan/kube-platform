@@ -1,69 +1,76 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "kube-platform Renovate config. Every pinned version in this repo is either carried by a '# renovate:' annotation (see customManagers) or found by one of the enabled built-in managers. Argo CD syncs this repo's protected branch straight into live clusters, so nothing auto-merges here - every upgrade arrives as its own reviewable pull request.",
   "extends": [
     "config:recommended",
     ":semanticCommits",
     ":dependencyDashboard"
   ],
-  "labels": ["renovate"],
-  "enabledManagers": ["custom.regex", "github-actions"],
+  "labels": [
+    "renovate"
+  ],
+  "prConcurrentLimit": 20,
+  "prHourlyLimit": 0,
+  "enabledManagers": [
+    "custom.regex",
+    "helm-values",
+    "helmv3",
+    "kubernetes",
+    "github-actions"
+  ],
+  "kubernetes": {
+    "description": "Plain, non-templated manifests carrying a container image. Scoped deliberately: everything else under platform/ is a Helm template, which this manager cannot parse.",
+    "managerFilePatterns": [
+      "/^platform/system-upgrade-controller/.+\\.yaml$/"
+    ]
+  },
   "customManagers": [
     {
       "customType": "regex",
-      "description": "RKE2 version — single source of truth in platform-versions/values.yaml, fetched by kube-compute's terragrunt units and kube-image's build.sh",
-      "fileMatch": ["^platform/platform-versions/values\\.yaml$"],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+k8sVersion:\\s*v?(?<currentValue>[^\\s\"]+)"
+      "description": "Any version carrying a '# renovate:' annotation on the line above it - platform-versions/values.yaml and every Argo CD Application targetRevision. registryUrl (Helm repositories) and versioning are optional; omit versioning to take the datasource default.",
+      "managerFilePatterns": [
+        "/^(bootstrap|platform)/.+\\.ya?ml$/"
       ],
-      "versioningTemplate": "regex:^v?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\+rke2r(?<build>\\d+)$"
-    },
-    {
-      "customType": "regex",
-      "description": "CAPI core / CAPMOX versions — plain GitHub-release semver, both consumed the same way (kube-image's build.sh clusterctl render)",
-      "fileMatch": ["^platform/platform-versions/values\\.yaml$"],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+capiCoreVersion:\\s*\"(?<currentValue>[^\"]+)\"",
-        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+capmoxVersion:\\s*\"(?<currentValue>[^\"]+)\""
-      ],
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "description": "Helm chart versions (Argo CD, Cilium, cluster-autoscaler)",
-      "fileMatch": ["^platform/platform-versions/values\\.yaml$"],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?) registryUrl=(?<registryUrl>.*?)\\s+argocdVersion:\\s*(?<currentValue>[0-9][^\\s\"]*)",
-        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?) registryUrl=(?<registryUrl>.*?)\\s+ciliumVersion:\\s*(?<currentValue>[0-9][^\\s\"]*)",
-        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?) registryUrl=(?<registryUrl>.*?)\\s+clusterAutoscalerVersion:\\s*\"(?<currentValue>[^\"]+)\""
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?(?: versioning=(?<versioning>\\S+))?[ \\t]*\\n[ \\t]*[\\w.-]+:[ \\t]*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
       ]
     }
   ],
   "packageRules": [
     {
-      "description": "Batch routine patch updates into one weekly PR",
-      "matchUpdateTypes": ["patch", "pin", "pinDigest"],
-      "groupName": "patch updates",
-      "schedule": ["before 6am on Monday"]
+      "description": "RKE2 tags are semver plus an RKE2 build counter (v1.36.2+rke2r1), which no built-in versioning scheme parses.",
+      "matchDepNames": [
+        "rancher/rke2"
+      ],
+      "versioning": "regex:^v?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\+rke2r(?<build>\\d+)$"
     },
     {
-      "description": "Auto-merge patch PRs once CI is green",
-      "matchUpdateTypes": ["patch"],
-      "automerge": true,
-      "automergeType": "pr"
+      "description": "Pin the wildcard subchart ranges in Chart.yaml. A '2.*' range is never out of date, so Renovate can only begin tracking these once they resolve to an exact version - which also matches how every other chart version in this repo is pinned.",
+      "matchManagers": [
+        "helmv3"
+      ],
+      "rangeStrategy": "pin"
     },
     {
-      "description": "Minor/major require manual review",
-      "matchUpdateTypes": ["minor", "major"],
-      "automerge": false,
-      "labels": ["renovate", "needs-review"]
-    },
-    {
-      "description": "Security fixes get individual PRs immediately",
-      "matchCategories": ["security"],
-      "groupName": null,
-      "schedule": ["at any time"],
-      "automerge": false,
-      "labels": ["renovate", "security"]
+      "description": "Minor and major upgrades change platform behaviour - label them so they are not skimmed.",
+      "matchUpdateTypes": [
+        "minor",
+        "major"
+      ],
+      "labels": [
+        "renovate",
+        "needs-review"
+      ]
     }
-  ]
+  ],
+  "vulnerabilityAlerts": {
+    "description": "Only fires for ecosystems GitHub raises advisories for, which is little of what this repo tracks. Kept so a security fix is labelled and unbatched if one ever does arrive.",
+    "labels": [
+      "renovate",
+      "security"
+    ],
+    "schedule": [
+      "at any time"
+    ]
+  }
 }
