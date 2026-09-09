@@ -6,4 +6,4 @@ version: 0.1.0
 dependencies:
   - name: democratic-csi
     repository: https://democratic-csi.github.io/charts/
-    version: "0.15.*"
+    version: "0.15.1"
