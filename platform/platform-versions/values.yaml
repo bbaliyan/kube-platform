@@ -17,7 +17,7 @@
 # component upgrade — no terragrunt apply required for the upgrade itself.
 
 # renovate: datasource=github-releases depName=rancher/rke2
-k8sVersion: v1.36.2+rke2r1
+k8sVersion: v1.36.4+rke2r1
 
 # renovate: datasource=helm depName=argo-cd registryUrl=https://argoproj.github.io/argo-helm
 argocdVersion: 10.8.4
