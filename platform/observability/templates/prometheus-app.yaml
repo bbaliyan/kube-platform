@@ -18,7 +18,7 @@ spec:
     repoURL: https://prometheus-community.github.io/helm-charts
     chart: kube-prometheus-stack
     # renovate: datasource=helm depName=kube-prometheus-stack registryUrl=https://prometheus-community.github.io/helm-charts
-    targetRevision: "87.5.1"
+    targetRevision: "87.21.0"
     helm:
       values: |
         fullnameOverride: prometheus
