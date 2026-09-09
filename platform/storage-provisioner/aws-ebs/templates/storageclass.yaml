@@ -21,6 +21,12 @@ metadata:
 provisioner: ebs.csi.aws.com
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
+# Without this, growing a PVC on this class is rejected by admission, not by
+# the CSI driver — so it fails at apply time with no way forward short of
+# recreating the claim. Unlike parameters/provisioner/reclaimPolicy/
+# volumeBindingMode, this field is mutable, so adding it applies to the live
+# class and to volumes already bound to it.
+allowVolumeExpansion: true
 parameters:
   type: gp3
   encrypted: "true"
