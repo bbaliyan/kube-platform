@@ -1,0 +1,9 @@
+# Must run before whatever stops the control plane. Once the API server is gone
+# nothing can scale anything, and the workers would bill until morning.
+schedule: "55 19 * * *"
+timeZone: "Australia/Sydney"
+
+# Nothing scales the groups back up on a schedule. cluster-autoscaler enforces
+# each group's own minimum, and creates nodes for Pending pods, so the morning
+# recovery is the same path any scale-up takes.
+kubectlImage: registry.k8s.io/kubectl:v1.34.1

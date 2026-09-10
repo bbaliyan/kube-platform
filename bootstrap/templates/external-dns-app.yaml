@@ -1,0 +1,85 @@
+{{- if .Values.externalDnsEnabled }}
+{{- if not .Values.clusterFqdnSuffix }}
+{{- fail "externalDnsEnabled requires clusterFqdnSuffix: it is both the domain filter and the record name, and an empty value would publish a record at the zone apex." }}
+{{- end }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-dns
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes-sigs.github.io/external-dns
+    chart: external-dns
+    # renovate: datasource=helm depName=external-dns registryUrl=https://kubernetes-sigs.github.io/external-dns
+    targetRevision: {{ .Values.externalDnsVersion | quote }}
+    helm:
+      valuesObject:
+        # Object form, not the bare string: the chart moved provider to a map at
+        # 1.14 and the string is silently ignored on newer charts.
+        provider:
+          name: aws
+
+        # Nodes, not Services. Traefik is a DaemonSet behind RKE2's ServiceLB, so
+        # every ingress-capable node answers on its own IP; there is no load
+        # balancer whose address could be published instead.
+        sources:
+          - node
+
+        # Every selected node renders the same name, so external-dns merges them
+        # into one multi-value A record rather than one record per node. That is
+        # the whole point: the wildcard has to answer with every node that can
+        # serve it, and change as nodes come and go.
+        extraArgs:
+          - --fqdn-template=*.{{ .Values.clusterFqdnSuffix }}
+          - --label-filter=kube-compute.io/ingress=true
+
+        domainFilters:
+          - {{ .Values.clusterFqdnSuffix | quote }}
+
+        # sync, not upsert-only: a terminated node has to lose its address, and
+        # upsert-only can only add. txtOwnerId keeps it to records it created,
+        # so it will not touch the api. record Terraform owns in the same zone.
+        policy: sync
+        registry: txt
+        txtOwnerId: {{ .Values.clusterName | quote }}
+
+        env:
+          - name: AWS_REGION
+            value: {{ .Values.awsRegion | quote }}
+
+        # No IRSA on a self-managed cluster, so it authenticates as the node it
+        # runs on. Pinned to the control plane because that is the role the
+        # consumer repo attaches Route53 permissions to, and because a controller
+        # that publishes worker addresses should not live on a worker.
+        nodeSelector:
+          node-role.kubernetes.io/control-plane: "true"
+        tolerations:
+          - key: CriticalAddonsOnly
+            operator: Exists
+          - key: node-role.kubernetes.io/control-plane
+            operator: Exists
+            effect: NoSchedule
+          - key: node-role.kubernetes.io/etcd
+            operator: Exists
+            effect: NoExecute
+        priorityClassName: system-cluster-critical
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            memory: 128Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-dns
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+{{- end }}

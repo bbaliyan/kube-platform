@@ -6,6 +6,10 @@ certMode: selfsigned
 clusterName: ""                 # raw cluster identifier — used to tag dynamically-provisioned storage
 clusterAutoscalerEnabled: false # deploy cluster-autoscaler (CAPI cloudProvider) — off by default; opt in per-cluster
 clusterApiEnabled: false        # deploy Cluster API (operator + core + AWS provider) — a prerequisite for clusterAutoscalerEnabled, since the autoscaler drives MachineDeployments
+externalDnsEnabled: false      # publish every ingress-capable node's IP into *.<clusterFqdnSuffix> — required whenever ingress runs on nodes a controller creates, since Terraform cannot own that record then
+nightScaleDownEnabled: false   # scale every MachineDeployment to zero on a schedule — the only way to stop workers a controller owns, since Terraform never sees those instances
+nightScaleDownSchedule: "55 19 * * *"      # must fire before whatever stops the control plane; once the API server is gone nothing can scale anything
+nightScaleDownTimeZone: "Australia/Sydney"
 extraTags: {}                    # arbitrary tags forwarded from node-aws's extra_tags, applied to CSI-provisioned storage
 # One Argo CD Application per entry (named storage-provisioner-<name>) — add
 # as many backends as the cluster needs (e.g. one democratic-csi release per

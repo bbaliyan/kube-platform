@@ -1,0 +1,8 @@
+apiVersion: v2
+name: night-scaledown
+description: >-
+  Scales every Cluster API MachineDeployment to zero on a schedule, so a cluster
+  whose workers are created by a controller can still be shut down overnight.
+  Terraform cannot stop those instances: it never sees them.
+type: application
+version: 0.1.0

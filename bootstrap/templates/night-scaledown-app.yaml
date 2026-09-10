@@ -1,0 +1,31 @@
+{{- if .Values.nightScaleDownEnabled }}
+{{- if not .Values.clusterApiEnabled }}
+{{- fail "nightScaleDownEnabled has nothing to scale without clusterApiEnabled: MachineDeployments only exist once Cluster API is installed." }}
+{{- end }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: night-scaledown
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.platformRepoURL | quote }}
+    targetRevision: {{ .Values.platformRevision | quote }}
+    path: platform/night-scaledown
+    helm:
+      valuesObject:
+        schedule: {{ .Values.nightScaleDownSchedule | quote }}
+        timeZone: {{ .Values.nightScaleDownTimeZone | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: night-scaledown
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+{{- end }}

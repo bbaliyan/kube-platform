@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: night-scaledown
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: night-scaledown
+rules:
+  # scale, not delete: setting replicas to zero removes the machines through the
+  # controller that owns them, so they come back cleanly. Deleting the instances
+  # underneath leaves Machine objects pointing at nothing, and a MachineDeployment
+  # does not replace a failed machine without a health check.
+  - apiGroups: ["cluster.x-k8s.io"]
+    resources: ["machinedeployments"]
+    verbs: ["get", "list", "patch"]
+  - apiGroups: ["cluster.x-k8s.io"]
+    resources: ["machinedeployments/scale"]
+    verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: night-scaledown
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: night-scaledown
+subjects:
+  - kind: ServiceAccount
+    name: night-scaledown
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: night-scaledown
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: {{ .Values.schedule | quote }}
+  timeZone: {{ .Values.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: night-scaledown
+          restartPolicy: Never
+          # Runs on the control plane, which is the node still alive when this
+          # matters: it is scaling away every other node in the cluster.
+          nodeSelector:
+            node-role.kubernetes.io/control-plane: "true"
+          tolerations:
+            - key: CriticalAddonsOnly
+              operator: Exists
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+            - key: node-role.kubernetes.io/etcd
+              operator: Exists
+              effect: NoExecute
+          containers:
+            - name: kubectl
+              image: {{ .Values.kubectlImage | quote }}
+              command:
+                - /bin/sh
+                - -c
+                - kubectl scale machinedeployment --all --all-namespaces --replicas=0
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 64Mi
