@@ -19,6 +19,28 @@ spec:
           clusterName: {{ .Values.clusterName | quote }}
         clusterAPIMode: incluster-incluster
         clusterAPICloudConfigPath: ""
+        # The scheduler is otherwise free to put the autoscaler on a node the
+        # autoscaler itself can delete, and to evict it first under memory
+        # pressure, since with no requests it is best-effort. Neither matters on
+        # a single-node cluster and both do the moment workers exist.
+        nodeSelector:
+          node-role.kubernetes.io/control-plane: "true"
+        tolerations:
+          - key: CriticalAddonsOnly
+            operator: Exists
+          - key: node-role.kubernetes.io/control-plane
+            operator: Exists
+            effect: NoSchedule
+          - key: node-role.kubernetes.io/etcd
+            operator: Exists
+            effect: NoExecute
+        priorityClassName: system-cluster-critical
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: cluster-autoscaler

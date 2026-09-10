@@ -1,0 +1,5 @@
+apiVersion: v2
+name: cluster-api-providers
+description: CoreProvider and InfrastructureProvider objects for the Cluster API Operator, so a provider version bump is a value change rather than an AMI rebuild.
+type: application
+version: 0.1.0

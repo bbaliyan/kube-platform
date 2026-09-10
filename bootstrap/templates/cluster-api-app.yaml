@@ -1,0 +1,115 @@
+{{- if .Values.clusterApiEnabled }}
+{{/*
+Installs Cluster API through the Cluster API Operator, which turns "which
+providers do I want" into CoreProvider/InfrastructureProvider objects the
+operator reconciles.
+
+Why from GitOps rather than a manifest baked into the node image: the Proxmox
+path applies a clusterctl-generated capi-install.yaml staged onto the VM
+template at image build time, and the AWS image does not stage one. Deploying it
+here instead means a provider version bump is a value change in
+platform-versions/values.yaml, not an AMI rebuild.
+
+cert-manager is deliberately NOT installed by this chart. Every CAPI webhook
+needs it, and it already arrives as this repo's own wave-0 Application; letting
+the operator chart install a second copy would give two controllers the same
+CRDs. That is also why this Application sits at a later sync wave.
+*/}}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cluster-api-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes-sigs.github.io/cluster-api-operator
+    chart: cluster-api-operator
+    targetRevision: {{ .Values.capiOperatorVersion | quote }}
+    helm:
+      valuesObject:
+        cert-manager:
+          enabled: false
+        # The operator manages the machines of the cluster it runs in, so it must
+        # live where those machines cannot delete it.
+        nodeSelector:
+          node-role.kubernetes.io/control-plane: "true"
+        tolerations:
+          - key: CriticalAddonsOnly
+            operator: Exists
+          - key: node-role.kubernetes.io/control-plane
+            operator: Exists
+            effect: NoSchedule
+          - key: node-role.kubernetes.io/etcd
+            operator: Exists
+            effect: NoExecute
+        priorityClassName: system-cluster-critical
+        resources:
+          manager:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: capi-operator-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+---
+{{/*
+The providers themselves, as objects the operator reconciles. Split from the
+Application above so the operator's own CRDs exist before these are applied;
+Argo CD's retry converges the ordering either way.
+
+Version pins come from platform-versions/values.yaml, so a bump is one value
+change shared by every cluster tracking this branch.
+*/}}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cluster-api-providers
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.platformRepoURL | quote }}
+    targetRevision: {{ .Values.platformRevision | quote }}
+    path: platform/cluster-api-providers
+    helm:
+      valuesObject:
+        capiCoreVersion: {{ .Values.capiCoreVersion | quote }}
+        capaVersion: {{ .Values.capaVersion | quote }}
+        awsRegion: {{ .Values.awsRegion | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: capi-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      # The providers take a while to come up and their CRDs land in stages, so
+      # a strict health check would fail the wave before it could succeed.
+      - RespectIgnoreDifferences=true
+  ignoreDifferences:
+    - group: operator.cluster.x-k8s.io
+      kind: CoreProvider
+      jsonPointers:
+        - /status
+    - group: operator.cluster.x-k8s.io
+      kind: InfrastructureProvider
+      jsonPointers:
+        - /status
+{{- end }}

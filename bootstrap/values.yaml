@@ -5,6 +5,7 @@ platformRevision: main
 certMode: selfsigned
 clusterName: ""                 # raw cluster identifier — used to tag dynamically-provisioned storage
 clusterAutoscalerEnabled: false # deploy cluster-autoscaler (CAPI cloudProvider) — off by default; opt in per-cluster
+clusterApiEnabled: false        # deploy Cluster API (operator + core + AWS provider) — a prerequisite for clusterAutoscalerEnabled, since the autoscaler drives MachineDeployments
 extraTags: {}                    # arbitrary tags forwarded from node-aws's extra_tags, applied to CSI-provisioned storage
 # One Argo CD Application per entry (named storage-provisioner-<name>) — add
 # as many backends as the cluster needs (e.g. one democratic-csi release per
@@ -75,7 +76,8 @@ vaultRole: ""         # Vault Kubernetes auth role bound to ESO's service accoun
 vaultAuthMountPath: "kubernetes"   # Vault/OpenBao Kubernetes-auth mount path this cluster was registered under
 vaultSecretPath: ""   # Full KV v2 path e.g. secret/data/kube/cluster-1/repo-cred
 
-# AWS SSM backend (secretStoreType: aws-ssm)
+# AWS SSM backend (secretStoreType: aws-ssm), and the region the AWS Cluster API
+# provider provisions machines in when clusterApiEnabled is true.
 awsRegion: ""         # e.g. eu-west-1
 ssmParameterPath: ""  # e.g. /kube/cluster-1/repo-cred
 

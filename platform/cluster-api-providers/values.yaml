@@ -1,0 +1,9 @@
+# All three are injected by the bootstrap chart's own Application. The two
+# versions come from platform-versions/values.yaml, so every cluster tracking
+# this branch moves together.
+capiCoreVersion: ""
+capaVersion: ""
+
+# The region the AWS provider provisions machines in. Empty leaves it unset, in
+# which case the provider falls back to the AWS SDK's own region resolution.
+awsRegion: ""

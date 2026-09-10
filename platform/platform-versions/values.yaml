@@ -31,6 +31,12 @@ capiCoreVersion: "v1.14.2"
 # renovate: datasource=github-releases depName=ionos-cloud/cluster-api-provider-proxmox
 capmoxVersion: "v0.9.1"
 
+# renovate: datasource=github-releases depName=kubernetes-sigs/cluster-api-provider-aws
+capaVersion: "v2.9.2"
+
+# renovate: datasource=helm depName=cluster-api-operator registryUrl=https://kubernetes-sigs.github.io/cluster-api-operator
+capiOperatorVersion: "0.27.0"
+
 # renovate: datasource=helm depName=cluster-autoscaler registryUrl=https://kubernetes.github.io/autoscaler
 clusterAutoscalerVersion: "9.59.0"
 
