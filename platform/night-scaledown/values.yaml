@@ -3,6 +3,10 @@
 schedule: "55 19 * * *"
 timeZone: "Australia/Sydney"
 
+# How stale a missed schedule may be and still run. Short on purpose: the point is
+# that a schedule missed while the cluster was off never fires on startup.
+startingDeadlineSeconds: 300
+
 # Nothing scales the groups back up on a schedule. cluster-autoscaler enforces
 # each group's own minimum, and creates nodes for Pending pods, so the morning
 # recovery is the same path any scale-up takes.

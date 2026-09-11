@@ -42,6 +42,13 @@ spec:
   schedule: {{ .Values.schedule | quote }}
   timeZone: {{ .Values.timeZone | quote }}
   concurrencyPolicy: Forbid
+  # Without this, a cluster that was off across one or more scheduled times runs
+  # the missed job the moment the API server comes back -- scaling every worker to
+  # zero minutes after someone deliberately started the cluster. The controller
+  # replays missed schedules when no deadline is set, and a cluster that stops
+  # every night is off across a schedule every weekend. A short deadline makes a
+  # stale schedule expire instead.
+  startingDeadlineSeconds: {{ .Values.startingDeadlineSeconds }}
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 3
   jobTemplate:
