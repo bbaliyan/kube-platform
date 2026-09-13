@@ -11,7 +11,7 @@ startingDeadlineSeconds: 300
 # Nothing scales the groups back up on a schedule. The resume Deployment hands
 # them back to cluster-autoscaler when the nodes next boot, and it creates workers
 # for whatever is Pending.
-kubectlImage: registry.k8s.io/kubectl:v1.36.4
+kubectlImage: registry.k8s.io/kubectl:v1.37.0
 pauseImage: registry.k8s.io/pause:3.10.2
 
 platformNodeSelector: {}
