@@ -79,9 +79,12 @@ vaultRole: ""         # Vault Kubernetes auth role bound to ESO's service accoun
 vaultAuthMountPath: "kubernetes"   # Vault/OpenBao Kubernetes-auth mount path this cluster was registered under
 vaultSecretPath: ""   # Full KV v2 path e.g. secret/data/kube/cluster-1/repo-cred
 
-# AWS SSM backend (secretStoreType: aws-ssm), and the region cluster-autoscaler
-# scales in when clusterAutoscalerCloudProvider is aws.
+# Region the cluster runs in: cluster-autoscaler scales in it when
+# clusterAutoscalerCloudProvider is aws.
 awsRegion: ""         # e.g. eu-west-1
+
+# AWS SSM backend (secretStoreType: aws-ssm)
+secretStoreRegion: "" # Region the parameters live in. Defaults to awsRegion.
 ssmParameterPath: ""  # e.g. /kube/cluster-1/repo-cred
 
 # Azure Key Vault backend (secretStoreType: azure-keyvault)

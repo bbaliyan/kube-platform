@@ -19,7 +19,7 @@ spec:
         - name: secretStoreType
           value: {{ .Values.secretStoreType | quote }}
         - name: awsRegion
-          value: {{ .Values.awsRegion | quote }}
+          value: {{ .Values.secretStoreRegion | default .Values.awsRegion | quote }}
         - name: vaultAddr
           value: {{ .Values.vaultAddr | quote }}
         - name: vaultRole
