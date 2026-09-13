@@ -7,9 +7,10 @@ timeZone: "Australia/Sydney"
 # that a schedule missed while the cluster was off never fires on startup.
 startingDeadlineSeconds: 300
 
-# Nothing scales the groups back up on a schedule. cluster-autoscaler enforces
-# each group's own minimum, and creates nodes for Pending pods, so the morning
-# recovery is the same path any scale-up takes.
-kubectlImage: registry.k8s.io/kubectl:v1.34.1
+# Nothing scales the groups back up on a schedule. The resume Deployment hands
+# them back to cluster-autoscaler when the nodes next boot, and it creates workers
+# for whatever is Pending.
+kubectlImage: registry.k8s.io/kubectl:v1.36.4
+pauseImage: registry.k8s.io/pause:3.10.2
 
 platformNodeSelector: {}

@@ -17,6 +17,11 @@ spec:
         cloudProvider: clusterapi
         autoDiscovery:
           clusterName: {{ .Values.clusterName | quote }}
+{{- if .Values.nightScaleDownEnabled }}
+          # night-scaledown pauses a group by relabelling it.
+          labels:
+            - kube-compute.io/autoscale: enabled
+{{- end }}
         clusterAPIMode: incluster-incluster
         clusterAPICloudConfigPath: ""
         extraArgs:

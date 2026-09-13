@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: night-scaledown-resume
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: night-scaledown-resume
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: night-scaledown-resume
+    spec:
+      serviceAccountName: night-scaledown
+      priorityClassName: platform
+      {{- with .Values.platformNodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # Init containers run again whenever the pod sandbox is recreated, which the
+      # next boot of a stopped node does. That is when the worker groups go back to
+      # cluster-autoscaler.
+      initContainers:
+        - name: resume-autoscaling
+          image: {{ .Values.kubectlImage | quote }}
+          args: [label, machinedeployment, --all, --all-namespaces, --overwrite, kube-compute.io/autoscale=enabled]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+      containers:
+        - name: idle
+          image: {{ .Values.pauseImage | quote }}
+          resources:
+            requests:
+              cpu: 1m
+              memory: 8Mi
+            limits:
+              memory: 16Mi

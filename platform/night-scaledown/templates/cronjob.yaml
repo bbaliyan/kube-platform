@@ -63,13 +63,22 @@ spec:
           nodeSelector:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          containers:
-            - name: kubectl
+          # Paused before scaling, or cluster-autoscaler replaces the workers for
+          # the pods this evicts before the nodes are stopped.
+          initContainers:
+            - name: pause-autoscaling
               image: {{ .Values.kubectlImage | quote }}
-              command:
-                - /bin/sh
-                - -c
-                - kubectl scale machinedeployment --all --all-namespaces --replicas=0
+              args: [label, machinedeployment, --all, --all-namespaces, --overwrite, kube-compute.io/autoscale=paused]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 64Mi
+          containers:
+            - name: scale-to-zero
+              image: {{ .Values.kubectlImage | quote }}
+              args: [scale, machinedeployment, --all, --all-namespaces, --replicas=0]
               resources:
                 requests:
                   cpu: 10m
