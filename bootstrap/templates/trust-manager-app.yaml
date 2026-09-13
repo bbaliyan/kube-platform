@@ -17,6 +17,7 @@ spec:
         app:
           trust:
             namespace: cert-manager
+        {{- include "platform.placement" . | nindent 8 }}
         resources:
           requests:
             cpu: 10m

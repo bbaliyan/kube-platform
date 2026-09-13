@@ -24,6 +24,8 @@ spec:
         fullnameOverride: prometheus
 
         grafana:
+          priorityClassName: platform
+          {{- include "platform.nodeSelector" . | nindent 10 }}
 {{- if .Values.grafanaPlugins }}
           plugins:
 {{- range .Values.grafanaPlugins }}
@@ -123,6 +125,8 @@ spec:
 {{- end }}
 
         prometheusOperator:
+          priorityClassName: platform
+          {{- include "platform.nodeSelector" . | nindent 10 }}
           # Route the admission-webhook TLS cert through cert-manager instead
           # of the chart's default self-signed create/patch Jobs. Those Jobs
           # set ttlSecondsAfterFinished and self-delete right after running —
@@ -163,6 +167,8 @@ spec:
               podMetricsEndpoints:
                 - port: metrics
           prometheusSpec:
+            priorityClassName: platform
+            {{- include "platform.nodeSelector" . | nindent 12 }}
             retention: 7d
             storageSpec:
               volumeClaimTemplate:
@@ -182,6 +188,8 @@ spec:
 
         alertmanager:
           alertmanagerSpec:
+            priorityClassName: platform
+            {{- include "platform.nodeSelector" . | nindent 12 }}
             storage:
               volumeClaimTemplate:
                 spec:
@@ -198,7 +206,9 @@ spec:
               limits:
                 memory: 64Mi
 
-        kubeStateMetrics:
+        kube-state-metrics:
+          priorityClassName: platform
+          {{- include "platform.nodeSelector" . | nindent 10 }}
           resources:
             requests:
               cpu: 10m

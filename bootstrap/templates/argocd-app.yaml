@@ -31,6 +31,8 @@ spec:
           params:
             # Deliberate: TLS terminates upstream (ingress / load balancer); Argo CD serves plain HTTP behind it.
             server.insecure: "true"
+        global:
+          {{- include "platform.placement" . | nindent 10 }}
         # repo-server and application-controller ship with zero resource
         # requests (BestEffort QoS) and a 1s probe timeoutSeconds upstream.
         # Not the cause of any specific incident seen so far (a repo-server

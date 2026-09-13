@@ -1,0 +1,17 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+value: 1000000
+description: Platform components. Preempts workloads when the node they share is full.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: workload-critical
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+value: 100000
+description: Workloads that must not be preempted by ordinary workloads, such as databases.

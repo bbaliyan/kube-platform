@@ -16,6 +16,8 @@ spec:
       values: |
         crds:
           enabled: true
+        global:
+          {{- include "platform.placement" . | nindent 10 }}
         resources:
           requests:
             cpu: 10m

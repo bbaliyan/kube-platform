@@ -11,3 +11,5 @@ startingDeadlineSeconds: 300
 # each group's own minimum, and creates nodes for Pending pods, so the morning
 # recovery is the same path any scale-up takes.
 kubectlImage: registry.k8s.io/kubectl:v1.34.1
+
+platformNodeSelector: {}

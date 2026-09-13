@@ -19,6 +19,8 @@ spec:
       valuesObject:
         schedule: {{ .Values.nightScaleDownSchedule | quote }}
         timeZone: {{ .Values.nightScaleDownTimeZone | quote }}
+        platformNodeSelector:
+          {{- toYaml .Values.platformNodeSelector | nindent 10 }}
   destination:
     server: https://kubernetes.default.svc
     namespace: night-scaledown

@@ -7,3 +7,4 @@ capaVersion: ""
 # The region the AWS provider provisions machines in. Empty leaves it unset, in
 # which case the provider falls back to the AWS SDK's own region resolution.
 awsRegion: ""
+platformNodeSelector: {}

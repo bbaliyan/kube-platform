@@ -52,20 +52,8 @@ spec:
             value: {{ .Values.awsRegion | quote }}
 
         # No IRSA on a self-managed cluster, so it authenticates as the node it
-        # runs on. Pinned to the control plane because that is the role the
-        # consumer repo attaches Route53 permissions to, and because a controller
-        # that publishes worker addresses should not live on a worker.
-        nodeSelector:
-          node-role.kubernetes.io/control-plane: "true"
-        tolerations:
-          - key: CriticalAddonsOnly
-            operator: Exists
-          - key: node-role.kubernetes.io/control-plane
-            operator: Exists
-            effect: NoSchedule
-          - key: node-role.kubernetes.io/etcd
-            operator: Exists
-            effect: NoExecute
+        # runs on, and Route53 permissions belong on that node's role.
+        {{- include "platform.nodeSelector" . | nindent 8 }}
         priorityClassName: system-cluster-critical
         resources:
           requests:

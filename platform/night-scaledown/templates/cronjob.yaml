@@ -58,19 +58,11 @@ spec:
         spec:
           serviceAccountName: night-scaledown
           restartPolicy: Never
-          # Runs on the control plane, which is the node still alive when this
-          # matters: it is scaling away every other node in the cluster.
+          priorityClassName: platform
+          {{- with .Values.platformNodeSelector }}
           nodeSelector:
-            node-role.kubernetes.io/control-plane: "true"
-          tolerations:
-            - key: CriticalAddonsOnly
-              operator: Exists
-            - key: node-role.kubernetes.io/control-plane
-              operator: Exists
-              effect: NoSchedule
-            - key: node-role.kubernetes.io/etcd
-              operator: Exists
-              effect: NoExecute
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           containers:
             - name: kubectl
               image: {{ .Values.kubectlImage | quote }}

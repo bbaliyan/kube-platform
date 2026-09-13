@@ -20,6 +20,7 @@ spec:
       valuesObject:
         aws-ebs-csi-driver:
           controller:
+            {{- include "platform.placement" $ | nindent 12 }}
             # Tags dynamically-provisioned EBS volumes with the owning cluster
             # (and any operator-supplied tags) so they're identifiable — and
             # sweepable — if the node is destroyed before the CSI driver gets

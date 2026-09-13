@@ -32,20 +32,7 @@ spec:
       valuesObject:
         cert-manager:
           enabled: false
-        # The operator manages the machines of the cluster it runs in, so it must
-        # live where those machines cannot delete it.
-        nodeSelector:
-          node-role.kubernetes.io/control-plane: "true"
-        tolerations:
-          - key: CriticalAddonsOnly
-            operator: Exists
-          - key: node-role.kubernetes.io/control-plane
-            operator: Exists
-            effect: NoSchedule
-          - key: node-role.kubernetes.io/etcd
-            operator: Exists
-            effect: NoExecute
-        priorityClassName: system-cluster-critical
+        {{- include "platform.nodeSelector" . | nindent 8 }}
         resources:
           manager:
             requests:
@@ -90,6 +77,8 @@ spec:
         capiCoreVersion: {{ .Values.capiCoreVersion | quote }}
         capaVersion: {{ .Values.capaVersion | quote }}
         awsRegion: {{ .Values.awsRegion | quote }}
+        platformNodeSelector:
+          {{- toYaml .Values.platformNodeSelector | nindent 10 }}
   destination:
     server: https://kubernetes.default.svc
     namespace: capi-system

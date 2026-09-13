@@ -23,10 +23,8 @@ spec:
           value: {{ .Values.hubbleEnabled | default false | quote }}
         - name: issuerName
           value: {{ .Values.pkiIssuerName | quote }}
-{{- if .Values.observabilityExtraHelmValues }}
       valuesObject:
-{{ .Values.observabilityExtraHelmValues | toYaml | indent 8 }}
-{{- end }}
+        {{- mustMergeOverwrite (dict "platformNodeSelector" .Values.platformNodeSelector) .Values.observabilityExtraHelmValues | toYaml | nindent 8 }}
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

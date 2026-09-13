@@ -69,3 +69,5 @@ grafanaPlugins: []
 # going dark in monitoring for exactly the node most worth watching. Empty
 # by default -- most clusters have no tainted nodes.
 nodeExporterTolerations: []
+
+platformNodeSelector: {}

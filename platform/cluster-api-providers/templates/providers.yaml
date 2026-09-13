@@ -1,10 +1,17 @@
 {{/*
-No configSecret on the AWS provider: the controller runs on the control-plane
-node and authenticates through that node's own instance profile via the AWS SDK
-credential chain. There is nowhere for a static key pair to come from that would
-not be a credential in git or in an image, and the node already has an IAM role
-this project's consumer repo attaches policies to.
+No configSecret on the AWS provider: the controller authenticates through the
+instance profile of the node it runs on, via the AWS SDK credential chain. There
+is nowhere for a static key pair to come from that would not be a credential in
+git or in an image, and the node already has an IAM role this project's consumer
+repo attaches policies to.
 */}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: capa-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+---
 apiVersion: operator.cluster.x-k8s.io/v1alpha2
 kind: CoreProvider
 metadata:
@@ -12,18 +19,11 @@ metadata:
   namespace: capi-system
 spec:
   version: {{ required "capiCoreVersion must be set" .Values.capiCoreVersion | quote }}
+  {{- with .Values.platformNodeSelector }}
   deployment:
     nodeSelector:
-      node-role.kubernetes.io/control-plane: "true"
-    tolerations:
-      - key: CriticalAddonsOnly
-        operator: Exists
-      - key: node-role.kubernetes.io/control-plane
-        operator: Exists
-        effect: NoSchedule
-      - key: node-role.kubernetes.io/etcd
-        operator: Exists
-        effect: NoExecute
+      {{- toYaml . | nindent 6 }}
+  {{- end }}
 ---
 apiVersion: operator.cluster.x-k8s.io/v1alpha2
 kind: InfrastructureProvider
@@ -38,15 +38,8 @@ spec:
       - name: AWS_REGION
         value: {{ .Values.awsRegion | quote }}
   {{- end }}
+  {{- with .Values.platformNodeSelector }}
   deployment:
     nodeSelector:
-      node-role.kubernetes.io/control-plane: "true"
-    tolerations:
-      - key: CriticalAddonsOnly
-        operator: Exists
-      - key: node-role.kubernetes.io/control-plane
-        operator: Exists
-        effect: NoSchedule
-      - key: node-role.kubernetes.io/etcd
-        operator: Exists
-        effect: NoExecute
+      {{- toYaml . | nindent 6 }}
+  {{- end }}
