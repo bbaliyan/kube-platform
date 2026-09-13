@@ -33,9 +33,15 @@ spec:
         # into one multi-value A record rather than one record per node. That is
         # the whole point: the wildcard has to answer with every node that can
         # serve it, and change as nodes come and go.
+        #
+        # The hosted zone is usually a parent of clusterFqdnSuffix, which the
+        # domain filter alone would skip. A "*" is not valid in the TXT ownership
+        # record's name, so it is replaced.
         extraArgs:
           - --fqdn-template=*.{{ .Values.clusterFqdnSuffix }}
           - --label-filter=kube-compute.io/ingress=true
+          - --aws-zone-match-parent
+          - --txt-wildcard-replacement=wildcard
 
         domainFilters:
           - {{ .Values.clusterFqdnSuffix | quote }}
