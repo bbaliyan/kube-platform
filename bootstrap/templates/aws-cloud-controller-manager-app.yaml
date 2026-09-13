@@ -24,12 +24,12 @@ spec:
           - --cloud-provider=aws
           - --controllers=cloud-node-lifecycle-controller
         hostNetworking: true
-        {{- with .Values.platformNodeSelector }}
+        # Helm merges maps, so the chart's control-plane selector must be removed explicitly.
         nodeSelector:
+          node-role.kubernetes.io/control-plane: null
+          {{- with .Values.platformNodeSelector }}
           {{- toYaml . | nindent 10 }}
-        {{- else }}
-        nodeSelector: null
-        {{- end }}
+          {{- end }}
         resources:
           requests:
             cpu: 50m
