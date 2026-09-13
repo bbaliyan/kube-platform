@@ -10,6 +10,7 @@ externalDnsEnabled: false      # publish every ingress-capable node's IP into *.
 nightScaleDownEnabled: false   # scale every MachineDeployment to zero on a schedule — the only way to stop workers a controller owns, since Terraform never sees those instances
 nightScaleDownSchedule: "55 19 * * *"      # must fire before whatever stops the control plane; once the API server is gone nothing can scale anything
 nightScaleDownTimeZone: "Australia/Sydney"
+nightResumeSchedule: "30 20 * * *"         # resumes autoscaling on a night the nodes were not stopped
 platformNodeSelector: {}        # node labels every platform component is pinned to; empty leaves placement to the scheduler
 extraTags: {}                    # arbitrary tags forwarded from node-aws's extra_tags, applied to CSI-provisioned storage
 # One Argo CD Application per entry (named storage-provisioner-<name>) — add

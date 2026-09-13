@@ -19,6 +19,7 @@ spec:
       valuesObject:
         schedule: {{ .Values.nightScaleDownSchedule | quote }}
         timeZone: {{ .Values.nightScaleDownTimeZone | quote }}
+        resumeSchedule: {{ .Values.nightResumeSchedule | quote }}
         platformNodeSelector:
           {{- toYaml .Values.platformNodeSelector | nindent 10 }}
   destination:

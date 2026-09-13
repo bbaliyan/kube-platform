@@ -41,3 +41,39 @@ spec:
               memory: 8Mi
             limits:
               memory: 16Mi
+---
+# For a night the nodes were not stopped, when nothing restarts the Deployment above.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: night-scaledown-resume
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: {{ .Values.resumeSchedule | quote }}
+  timeZone: {{ .Values.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ .Values.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: night-scaledown
+          restartPolicy: Never
+          priorityClassName: platform
+          {{- with .Values.platformNodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: resume-autoscaling
+              image: {{ .Values.kubectlImage | quote }}
+              args: [label, machinedeployment, --all, --all-namespaces, --overwrite, kube-compute.io/autoscale=enabled]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 64Mi
