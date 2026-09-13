@@ -1,4 +1,7 @@
 {{- if .Values.clusterAutoscalerEnabled }}
+{{- if not (has .Values.clusterAutoscalerCloudProvider (list "aws" "clusterapi")) }}
+{{- fail "clusterAutoscalerCloudProvider must be aws or clusterapi" }}
+{{- end }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -14,14 +17,12 @@ spec:
     targetRevision: {{ .Values.clusterAutoscalerVersion | quote }}
     helm:
       valuesObject:
-        cloudProvider: clusterapi
+        cloudProvider: {{ .Values.clusterAutoscalerCloudProvider }}
         autoDiscovery:
-          clusterName: {{ .Values.clusterName | quote }}
-{{- if .Values.nightScaleDownEnabled }}
-          # night-scaledown pauses a group by relabelling it.
-          labels:
-            - kube-compute.io/autoscale: enabled
-{{- end }}
+          clusterName: {{ required "clusterName must be set" .Values.clusterName | quote }}
+{{- if eq .Values.clusterAutoscalerCloudProvider "aws" }}
+        awsRegion: {{ required "awsRegion must be set for the aws cloud provider" .Values.awsRegion | quote }}
+{{- else }}
         clusterAPIMode: incluster-incluster
         clusterAPICloudConfigPath: ""
         # Scaling a group from zero reads its infrastructure machine template.
@@ -30,6 +31,7 @@ spec:
             - apiGroups: [infrastructure.cluster.x-k8s.io]
               resources: ["*"]
               verbs: [get, list, watch]
+{{- end }}
         extraArgs:
           expander: least-waste
         {{- include "platform.nodeSelector" . | nindent 8 }}

@@ -1,0 +1,46 @@
+{{- if and .Values.clusterAutoscalerEnabled (eq .Values.clusterAutoscalerCloudProvider "aws") }}
+{{/*
+cluster-autoscaler terminates instances but never deletes their Node objects, and a
+pod bound to a vanished node never moves. Only the node lifecycle controller runs:
+the service controller would give Traefik's LoadBalancer Service an AWS load balancer.
+*/}}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-cloud-controller-manager
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes.github.io/cloud-provider-aws
+    chart: aws-cloud-controller-manager
+    targetRevision: {{ .Values.awsCloudControllerManagerVersion | quote }}
+    helm:
+      valuesObject:
+        args:
+          - --v=2
+          - --cloud-provider=aws
+          - --controllers=cloud-node-lifecycle-controller
+        hostNetworking: true
+        {{- with .Values.platformNodeSelector }}
+        nodeSelector:
+          {{- toYaml . | nindent 10 }}
+        {{- else }}
+        nodeSelector: null
+        {{- end }}
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+{{- end }}
