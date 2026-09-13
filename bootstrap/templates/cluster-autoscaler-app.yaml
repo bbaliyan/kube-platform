@@ -24,6 +24,12 @@ spec:
 {{- end }}
         clusterAPIMode: incluster-incluster
         clusterAPICloudConfigPath: ""
+        # Scaling a group from zero reads its infrastructure machine template.
+        rbac:
+          additionalRules:
+            - apiGroups: [infrastructure.cluster.x-k8s.io]
+              resources: ["*"]
+              verbs: [get, list, watch]
         extraArgs:
           expander: least-waste
         {{- include "platform.nodeSelector" . | nindent 8 }}
