@@ -34,6 +34,12 @@ spec:
 {{- end }}
         extraArgs:
           expander: least-waste
+          {{- with .Values.clusterAutoscalerCoresTotal }}
+          cores-total: {{ . | quote }}
+          {{- end }}
+          {{- with .Values.clusterAutoscalerMemoryTotal }}
+          memory-total: {{ . | quote }}
+          {{- end }}
         {{- include "platform.nodeSelector" . | nindent 8 }}
         priorityClassName: system-cluster-critical
         resources:

@@ -6,6 +6,8 @@ certMode: selfsigned
 clusterName: ""                 # raw cluster identifier — used to tag dynamically-provisioned storage
 clusterAutoscalerEnabled: false # deploy cluster-autoscaler — off by default; opt in per-cluster
 clusterAutoscalerCloudProvider: clusterapi # clusterapi: Cluster API MachineDeployments; aws: EC2 Auto Scaling groups tagged for clusterName, plus the cloud controller manager that deletes nodes of terminated instances
+clusterAutoscalerCoresTotal: ""  # <min>:<max> vCPUs across every node in the cluster; empty leaves the autoscaler's default
+clusterAutoscalerMemoryTotal: "" # <min>:<max> GiB across every node in the cluster; empty leaves the autoscaler's default
 platformNodeSelector: {}        # node labels every platform component is pinned to; empty leaves placement to the scheduler
 extraTags: {}                    # arbitrary tags forwarded from node-aws's extra_tags, applied to CSI-provisioned storage
 # One Argo CD Application per entry (named storage-provisioner-<name>) — add
