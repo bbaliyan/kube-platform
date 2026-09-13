@@ -42,6 +42,3 @@ clusterAutoscalerVersion: "9.59.0"
 
 # renovate: datasource=helm depName=gpu-operator registryUrl=https://helm.ngc.nvidia.com/nvidia
 gpuOperatorVersion: "v26.7.0"
-
-# renovate: datasource=helm depName=external-dns registryUrl=https://kubernetes-sigs.github.io/external-dns
-externalDnsVersion: "1.21.1"

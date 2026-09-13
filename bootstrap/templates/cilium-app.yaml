@@ -49,7 +49,7 @@ spec:
         # loadBalancerClass (which would be immutable and force Service
         # recreation), so Traefik's Service is picked up unchanged. On a
         # multi-node cluster the Service is published with the IPs of the nodes
-        # running a backend pod (Traefik is a DaemonSet with
+        # running a backend pod (Traefik runs on the platform node with
         # externalTrafficPolicy: Local); consumers front those with DNS.
         nodeIPAM:
           enabled: true

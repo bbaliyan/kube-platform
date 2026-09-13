@@ -52,6 +52,7 @@ spec:
             memory: 64Mi
           limits:
             memory: 128Mi
+        {{- include "platform.placement" . | nindent 8 }}
   destination:
     server: https://kubernetes.default.svc
     namespace: traefik
