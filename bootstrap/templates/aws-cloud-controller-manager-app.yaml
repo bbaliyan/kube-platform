@@ -5,6 +5,18 @@ pod bound to a vanished node never moves. Only the node lifecycle controller run
 the service controller would give Traefik's LoadBalancer Service an AWS load balancer.
 It runs on the control plane, the chart's own placement and the first node back after a stop.
 */}}
+# The provider exits at startup without a cluster ID. Given none here, it looks for a
+# kubernetes.io/cluster/<name> tag on its own instance, which kube-compute doesn't set.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-cloud-config
+  namespace: kube-system
+data:
+  cloud.conf: |
+    [Global]
+    KubernetesClusterID={{ required "clusterName is required for the AWS cloud controller manager" .Values.clusterName }}
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -20,10 +32,22 @@ spec:
     targetRevision: {{ .Values.awsCloudControllerManagerVersion | quote }}
     helm:
       valuesObject:
+        # The chart is released less often than the controller.
+        image:
+          tag: {{ .Values.awsCloudControllerManagerImageTag | quote }}
         args:
           - --v=2
           - --cloud-provider=aws
+          - --cloud-config=/etc/aws/cloud.conf
           - --controllers=cloud-node-lifecycle-controller
+        extraVolumes:
+          - name: cloud-config
+            configMap:
+              name: aws-cloud-config
+        extraVolumeMounts:
+          - name: cloud-config
+            mountPath: /etc/aws
+            readOnly: true
         hostNetworking: true
         # RKE2 labels its control-plane nodes "true", where the chart selects "".
         nodeSelector:
