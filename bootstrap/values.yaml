@@ -59,7 +59,7 @@ singleNodeCluster: false
 argocdTlsCertHostname: ""
 
 # Secret store wiring for private workload repo access.
-# Leave secretStoreType empty for clusters with no private repos — ESO is not deployed.
+# Leave secretStoreType empty for clusters with no private repos — no secret store is configured.
 secretStoreType: ""   # vault | aws-ssm | azure-keyvault
 
 # URL prefix used by Argo CD repo-creds credential template matching. All repos

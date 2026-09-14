@@ -23,8 +23,47 @@ spec:
       values: |
         fullnameOverride: prometheus
 
+        # Grafana's admin password, generated once. The chart's own Secret is random on
+        # every render, which rolls Grafana out on every sync.
+        extraManifests:
+          - apiVersion: generators.external-secrets.io/v1alpha1
+            kind: Password
+            metadata:
+              name: grafana-admin
+            spec:
+              length: 32
+              digits: 6
+              symbols: 0
+              noUpper: false
+              allowRepeat: true
+          - apiVersion: external-secrets.io/v1
+            kind: ExternalSecret
+            metadata:
+              name: grafana-admin
+            spec:
+              refreshPolicy: CreatedOnce
+              target:
+                name: grafana-admin
+                template:
+                  mergePolicy: Merge
+                  data:
+                    admin-user: admin
+              dataFrom:
+                - sourceRef:
+                    generatorRef:
+                      apiVersion: generators.external-secrets.io/v1alpha1
+                      kind: Password
+                      name: grafana-admin
+
         grafana:
           priorityClassName: platform
+          admin:
+            existingSecret: grafana-admin
+            userKey: admin-user
+            passwordKey: password
+          # Its volume attaches to one node at a time, so a rolling update onto another node never starts.
+          deploymentStrategy:
+            type: Recreate
           {{- include "platform.nodeSelector" . | nindent 10 }}
 {{- if .Values.grafanaPlugins }}
           plugins:
@@ -248,22 +287,18 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: prometheus
-  # Grafana's chart keeps its random admin password stable via Helm lookup(),
-  # which returns empty under Argo CD (`helm template`, no cluster access) — so
-  # each sync would regenerate it and drift from the DB-initialized value. Pin
-  # the first-generated password by ignoring the field on sync.
-  ignoreDifferences:
-    - group: ""
-      kind: Secret
-      name: prometheus-grafana
-      namespace: prometheus
-      jsonPointers:
-        - /data/admin-password
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+    # On a new cluster this can sync before External Secrets has installed its CRDs.
+    retry:
+      limit: 10
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 3m
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-      - RespectIgnoreDifferences=true
+      - SkipDryRunOnMissingResource=true

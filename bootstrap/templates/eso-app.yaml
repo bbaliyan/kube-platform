@@ -1,4 +1,4 @@
-{{- if .Values.secretStoreType }}
+{{/* On every cluster: the platform generates secrets with it as well as fetching them. */}}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -32,4 +32,3 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-{{- end }}
