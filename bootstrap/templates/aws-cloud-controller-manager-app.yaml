@@ -3,6 +3,7 @@
 cluster-autoscaler terminates instances but never deletes their Node objects, and a
 pod bound to a vanished node never moves. Only the node lifecycle controller runs:
 the service controller would give Traefik's LoadBalancer Service an AWS load balancer.
+It runs on the control plane, the chart's own placement and the first node back after a stop.
 */}}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -24,12 +25,12 @@ spec:
           - --cloud-provider=aws
           - --controllers=cloud-node-lifecycle-controller
         hostNetworking: true
-        # Helm merges maps, so the chart's control-plane selector must be removed explicitly.
+        # RKE2 labels its control-plane nodes "true", where the chart selects "".
         nodeSelector:
-          node-role.kubernetes.io/control-plane: null
-          {{- with .Values.platformNodeSelector }}
-          {{- toYaml . | nindent 10 }}
-          {{- end }}
+          node-role.kubernetes.io/control-plane: "true"
+        tolerations:
+          - key: CriticalAddonsOnly
+            operator: Exists
         resources:
           requests:
             cpu: 50m
