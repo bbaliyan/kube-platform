@@ -18,10 +18,28 @@ spec:
         global:
           {{- include "platform.nodeSelector" . | nindent 10 }}
         priorityClassName: platform
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            memory: 512Mi
         webhook:
           priorityClassName: platform
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 256Mi
         certController:
           priorityClassName: platform
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 256Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: external-secrets

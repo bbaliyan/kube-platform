@@ -41,60 +41,72 @@ spec:
             server.insecure: "true"
         global:
           {{- include "platform.placement" . | nindent 10 }}
-        # repo-server and application-controller ship with zero resource
-        # requests (BestEffort QoS) and a 1s probe timeoutSeconds upstream.
-        # Not the cause of any specific incident seen so far (a repo-server
-        # crash loop on cluster-1 turned out to be an unrelated node-level
-        # Cilium/nft_compat issue), but a BestEffort pod with a 1s probe
-        # deadline has no guaranteed CPU share on a small single-node box, so
-        # it's one contention scenario away from the same symptom. Cheap
-        # insurance: a real (if modest) CPU/memory guarantee and a probe
-        # timeout that tolerates brief scheduling jitter.
-        # Sizing below matches the small-cluster figures generally quoted in
-        # the Argo CD community for a handful of Applications (there is no
-        # single official Argo CD sizing table — checked the HA doc, the
-        # argocd-operator docs, and third-party performance guides directly;
-        # none prescribe defaults, the operator docs explicitly disclaim their
-        # examples as non-recommendations). Cross-checked against a real
-        # measurement on cluster-1: application-controller sat around 500Mi
-        # reconciling the full ~17-app platform tree (cert-manager, cilium,
-        # observability stack, traefik, etc.) — a 1Gi limit keeps ~2x headroom
-        # over that rather than padding further, since the ask here is lean
-        # over generous.
+        # The chart sets no resources. Requests are what a small cluster uses
+        # steadily, limits the peak of rendering and syncing large charts. No CPU
+        # limits, which would only throttle manifest generation and syncs. The
+        # probes' upstream 1s timeout fails under brief CPU contention.
+        controller:
+          resources:
+            requests:
+              cpu: 250m
+              memory: 384Mi
+            limits:
+              memory: {{ .Values.argocdControllerMemoryLimit | quote }}
+          readinessProbe:
+            timeoutSeconds: 5
+            failureThreshold: 5
         repoServer:
+          # Argo CD doesn't size Go's heap from the container limit; this is 90% of it.
+          env:
+            - name: GOMEMLIMIT
+              value: 920MiB
           resources:
             requests:
               cpu: 100m
               memory: 128Mi
             limits:
-              cpu: 500m
-              memory: 512Mi
+              memory: 1Gi
           readinessProbe:
             timeoutSeconds: 5
             failureThreshold: 5
           livenessProbe:
             timeoutSeconds: 5
             failureThreshold: 5
-        controller:
+        server:
           resources:
             requests:
-              cpu: 250m
-              memory: 256Mi
+              cpu: 50m
+              memory: 64Mi
             limits:
-              cpu: 1000m
-              # Overridable per-cluster via argocdControllerMemoryLimit
-              # (platform_extra_helm_parameters) -- the 1Gi default below was
-              # calibrated against cluster-1's own tree size only. This
-              # controller also reconciles whatever consumer/workload
-              # Applications the cluster runs on top of the platform tree, so
-              # a cluster with a larger workload tree (e.g. cluster-media's
-              # kube-workload-media apps) genuinely needs more than a
-              # platform-only cluster does -- no single hardcoded value fits
-              # every consumer.
-              memory: {{ .Values.argocdControllerMemoryLimit | quote }}
-          readinessProbe:
-            timeoutSeconds: 5
-            failureThreshold: 5
+              memory: 512Mi
+        redis:
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 256Mi
+        applicationSet:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 256Mi
+        notifications:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+        dex:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

@@ -79,17 +79,27 @@ spec:
 {{- if .Values.storageClassName }}
             storageClassName: {{ .Values.storageClassName | quote }}
 {{- end }}
+          # A backend plugin such as mssql runs as its own process in this container,
+          # and opening a dashboard runs all its panels' queries at once: 512Mi was
+          # OOM-killed switching between dashboards.
           resources:
             requests:
-              cpu: 25m
-              memory: 128Mi
+              cpu: 50m
+              memory: 192Mi
             limits:
-              memory: 512Mi
+              memory: 1Gi
           grafana.ini:
             server:
               root_url: "%(protocol)s://%(domain)s/"
               serve_from_sub_path: false
           sidecar:
+            # Both sidecars; they list and watch every ConfigMap and Secret in the cluster.
+            resources:
+              requests:
+                cpu: 10m
+                memory: 48Mi
+              limits:
+                memory: 256Mi
             datasources:
               enabled: true
               # Lets any namespace self-register a Grafana datasource via a
@@ -166,6 +176,12 @@ spec:
         prometheusOperator:
           priorityClassName: platform
           {{- include "platform.nodeSelector" . | nindent 10 }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 48Mi
+            limits:
+              memory: 256Mi
           # Route the admission-webhook TLS cert through cert-manager instead
           # of the chart's default self-signed create/patch Jobs. Those Jobs
           # set ttlSecondsAfterFinished and self-delete right after running —
@@ -218,12 +234,15 @@ spec:
                   resources:
                     requests:
                       storage: 20Gi
+            # Prometheus 3 sets its own GOMEMLIMIT to 90% of the limit. Memory grows
+            # with active series, which Hubble's metrics multiply, and replaying the
+            # WAL after every nightly start peaks well above steady use.
             resources:
               requests:
                 cpu: 50m
-                memory: 256Mi
+                memory: 384Mi
               limits:
-                memory: 1Gi
+                memory: 2Gi
 
         alertmanager:
           alertmanagerSpec:
@@ -243,15 +262,18 @@ spec:
                 cpu: 10m
                 memory: 32Mi
               limits:
-                memory: 64Mi
+                memory: 128Mi
 
         kube-state-metrics:
           priorityClassName: platform
           {{- include "platform.nodeSelector" . | nindent 10 }}
+          # Its README's baseline allocation; it grows with the objects in the cluster.
           resources:
             requests:
               cpu: 10m
               memory: 32Mi
+            limits:
+              memory: 256Mi
 
         # NOTE: kube-prometheus-stack's own top-level `nodeExporter:` key only
         # has enabled/operatingSystems/forceDeployDashboards -- resources and
@@ -265,6 +287,8 @@ spec:
             requests:
               cpu: 10m
               memory: 32Mi
+            limits:
+              memory: 128Mi
           tolerations:
 {{ .Values.nodeExporterTolerations | toYaml | indent 12 }}
 

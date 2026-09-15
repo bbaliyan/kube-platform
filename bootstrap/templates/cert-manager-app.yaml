@@ -18,26 +18,28 @@ spec:
           enabled: true
         global:
           {{- include "platform.placement" . | nindent 10 }}
+        # The controller and cainjector cache Secrets and CRDs cluster-wide, so
+        # their memory grows with the cluster rather than with certificates.
         resources:
           requests:
             cpu: 10m
             memory: 64Mi
           limits:
-            memory: 128Mi
+            memory: 512Mi
         webhook:
           resources:
             requests:
               cpu: 10m
               memory: 32Mi
             limits:
-              memory: 64Mi
+              memory: 128Mi
         cainjector:
           resources:
             requests:
               cpu: 10m
               memory: 32Mi
             limits:
-              memory: 256Mi
+              memory: 512Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: cert-manager

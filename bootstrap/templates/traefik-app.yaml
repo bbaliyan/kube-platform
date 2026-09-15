@@ -46,12 +46,17 @@ spec:
         additionalArguments:
           - "--providers.kubernetescrd.allowCrossNamespace=true"
 
+        # Every connection through the ingress, TCP routes included, ends if
+        # Traefik is OOM-killed. GOMEMLIMIT is 90% of the limit.
+        env:
+          - name: GOMEMLIMIT
+            value: 460MiB
         resources:
           requests:
             cpu: 25m
             memory: 64Mi
           limits:
-            memory: 128Mi
+            memory: 512Mi
         {{- include "platform.placement" . | nindent 8 }}
   destination:
     server: https://kubernetes.default.svc

@@ -54,15 +54,16 @@ spec:
                 }
               }
 
+          # Alloy sets its own GOMEMLIMIT to 90% of this limit.
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 512Mi
+
         controller:
           type: daemonset
-
-        resources:
-          requests:
-            cpu: 20m
-            memory: 64Mi
-          limits:
-            memory: 128Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: alloy

@@ -54,6 +54,17 @@ spec:
         nodeIPAM:
           enabled: true
         defaultLBServiceIPAM: nodeipam
+        # Requests only on the agent and Envoy: a memory limit would let the kernel
+        # kill a node's datapath. Keep equal to the genesis values in kube-image.
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        envoy:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
         # cilium-operator's chart default is 2 replicas with pod
         # anti-affinity — on a genuinely single-node cluster this leaves one
         # replica permanently Pending (confirmed on cluster-1: a second
@@ -72,6 +83,12 @@ spec:
           replicas: {{ .Values.ciliumOperatorReplicas }}
           tolerations:
             - operator: Exists
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 512Mi
 {{- if .Values.hubbleEnabled }}
           # cilium-operator's own metrics (port 9963) — separate from both
           # cilium-agent's below and hubble.metrics below; the Cilium Metrics
@@ -128,8 +145,28 @@ spec:
         hubble:
           relay:
             enabled: true
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 256Mi
           ui:
             enabled: true
+            backend:
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+            frontend:
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  memory: 64Mi
           metrics:
             enableOpenMetrics: true
             enabled:
