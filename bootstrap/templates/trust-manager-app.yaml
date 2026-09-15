@@ -11,7 +11,7 @@ spec:
     repoURL: https://charts.jetstack.io
     chart: trust-manager
     # renovate: datasource=helm depName=trust-manager registryUrl=https://charts.jetstack.io
-    targetRevision: "0.24.0"
+    targetRevision: "v0.25.0"
     helm:
       values: |
         app:
