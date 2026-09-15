@@ -28,6 +28,14 @@ spec:
     helm:
       values: |
         configs:
+          # Also how soon an Application whose comparison failed is compared
+          # again. On a new cluster that is every Application waiting on repo
+          # credentials or a CRD from another one, and the default two minutes
+          # plus up to one of jitter was most of the bring-up time. Keep equal
+          # to the genesis render's values in kube-image.
+          cm:
+            timeout.reconciliation: 30s
+            timeout.reconciliation.jitter: 10s
           params:
             # Deliberate: TLS terminates upstream (ingress / load balancer); Argo CD serves plain HTTP behind it.
             server.insecure: "true"
