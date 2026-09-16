@@ -34,6 +34,9 @@ spec:
 {{- end }}
         extraArgs:
           expander: least-waste
+          # The chart defaults to 4, which logs every step of the loop it runs
+          # every 10 seconds. 2 keeps the scale-up and scale-down decisions.
+          v: 2
           {{- with .Values.clusterAutoscalerCoresTotal }}
           cores-total: {{ . | quote }}
           {{- end }}
