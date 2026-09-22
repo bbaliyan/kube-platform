@@ -18,7 +18,7 @@ extraTags: {}                    # arbitrary tags forwarded from node-aws's extr
 #                                # describes the backend, not an ordinal
 #     type: democratic-csi      # aws-ebs | democratic-csi | longhorn | local-path
 #     repoURL: ""                # defaults to platformRepoURL when empty
-#     revision: main
+#     revision: ""               # defaults to platformRevision when empty
 #     helmValues: {}             # backend-specific values (driver connection
 #                                 # details, storageClasses, replica counts —
 #                                 # ignored for aws-ebs, which derives its own

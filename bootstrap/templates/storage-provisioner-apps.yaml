@@ -13,7 +13,7 @@ spec:
   project: default
   source:
     repoURL: {{ $sp.repoURL | default $.Values.platformRepoURL }}
-    targetRevision: {{ $sp.revision | default "main" }}
+    targetRevision: {{ $sp.revision | default $.Values.platformRevision }}
     path: platform/storage-provisioner/{{ $sp.type }}
 {{- if eq $sp.type "aws-ebs" }}
     helm:
