@@ -41,4 +41,4 @@ awsCloudControllerManagerVersion: "0.0.12"
 awsCloudControllerManagerImageTag: "v1.37.0"
 
 # renovate: datasource=helm depName=gpu-operator registryUrl=https://helm.ngc.nvidia.com/nvidia
-gpuOperatorVersion: "v26.7.0"
+gpuOperatorVersion: "v26.7.1"
