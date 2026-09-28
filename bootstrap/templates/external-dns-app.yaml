@@ -1,0 +1,65 @@
+{{- if .Values.externalDnsEnabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-dns
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes-sigs.github.io/external-dns/
+    chart: external-dns
+    # renovate: datasource=helm depName=external-dns registryUrl=https://kubernetes-sigs.github.io/external-dns/
+    targetRevision: "1.22.0"
+    helm:
+      values: |
+        # Built-in AWS provider, no webhook sidecar -- the node role carries whatever
+        # IAM this needs, same as aws-cloud-controller-manager and the workload roles.
+        provider:
+          name: aws
+
+        # CRD, not service/ingress: a name here comes from a DNSEndpoint object a
+        # workload creates itself, not from annotating a Service or Ingress.
+        sources:
+          - crd
+
+        policy: sync
+        registry: txt
+        # Without a prefix, a CNAME's TXT ownership record would need the exact
+        # same name as the CNAME itself, which Route53 does not allow -- a name
+        # with a CNAME may have nothing else at it.
+        txtPrefix: "external-dns-"
+        # Distinguishes this cluster's own records from another cluster's in the same
+        # zone: two clusters publishing the same name each keep their own TXT
+        # ownership marker, so neither's writer treats the other's record as a stale
+        # one to clean up. clusterName alone is not enough -- two clusters in
+        # different regions can share the same directory basename, and so the same
+        # clusterName; dnsOwnerId is clusterName plus the region for exactly that
+        # reason.
+        txtOwnerId: {{ required "dnsOwnerId is required for ExternalDNS's TXT registry" .Values.dnsOwnerId | quote }}
+
+        # Confines every write to this subdomain, so this never touches whatever
+        # else manages DNS records in the rest of the same zone -- node records,
+        # the cluster's own wildcard and api records, and so on.
+        domainFilters:
+          - {{ required "externalDnsDomainFilter is required when externalDnsEnabled is true" .Values.externalDnsDomainFilter | quote }}
+
+        extraArgs:
+          aws-zone-type: private
+
+        env:
+          - name: AWS_DEFAULT_REGION
+            value: {{ required "awsRegion is required when externalDnsEnabled is true" .Values.awsRegion | quote }}
+        {{- include "platform.placement" . | nindent 8 }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-dns
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+{{- end }}

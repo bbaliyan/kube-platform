@@ -31,6 +31,13 @@ observabilityExtraHelmValues: {} # generic passthrough forwarded as helm.valuesO
 gpuOperatorHelmValues: {}       # consumer-specific values (node selector/toleration, time-slicing config, etc.) merged over this Application's own driver.enabled: true default
 clusterFqdnSuffix: ""
 trustedCaPemB64: ""
+
+# Publishes DNSEndpoint objects a workload creates itself to Route53 — off by
+# default; opt in per-cluster. externalDnsDomainFilter and awsRegion are required
+# when this is true.
+externalDnsEnabled: false
+externalDnsDomainFilter: ""     # e.g. example.internal
+dnsOwnerId: ""                   # clusterName plus the region -- see external-dns-app.yaml
 traefikExtraConfig: {}          # traefikExtraConfig.ports entries are merged into traefik's ports block (web/websecure are always present)
 
 # argocd-application-controller's memory limit (see argocd-app.yaml). It caches
