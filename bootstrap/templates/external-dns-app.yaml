@@ -48,6 +48,7 @@ spec:
 
         extraArgs:
           aws-zone-type: private
+          aws-zone-match-parent: "true"
 
         env:
           - name: AWS_DEFAULT_REGION
