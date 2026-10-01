@@ -11,10 +11,7 @@ spec:
       - key: node-role.kubernetes.io/control-plane
         operator: DoesNotExist
   serviceAccountName: system-upgrade
-  # Only ever matches worker nodes (excluded from control-plane by the
-  # selector above); on a single-node cluster this Plan matches nothing and
-  # is a no-op, so no singleNodeCluster gating is needed here the way the
-  # server Plan needs it.
+  # Only ever matches worker nodes; on a single-node cluster it matches nothing.
   drain:
     force: true
   prepare:
