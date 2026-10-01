@@ -12,7 +12,7 @@ spec:
     repoURL: https://kubernetes-sigs.github.io/external-dns/
     chart: external-dns
     # renovate: datasource=helm depName=external-dns registryUrl=https://kubernetes-sigs.github.io/external-dns/
-    targetRevision: "1.22.0"
+    targetRevision: "1.23.0"
     helm:
       values: |
         # Built-in AWS provider, no webhook sidecar -- the node role carries whatever
