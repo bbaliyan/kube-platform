@@ -16,9 +16,6 @@ spec:
         # platform component versions) — see platform/platform-versions/values.yaml.
         valueFiles:
           - $values/platform/platform-versions/values.yaml
-        parameters:
-          - name: singleNodeCluster
-            value: {{ .Values.singleNodeCluster | default false | quote }}
     - repoURL: {{ .Values.platformRepoURL }}
       targetRevision: {{ .Values.platformRevision }}
       ref: values

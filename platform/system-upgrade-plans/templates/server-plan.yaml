@@ -21,14 +21,8 @@ spec:
     - key: CriticalAddonsOnly
       operator: Exists
       effect: NoExecute
-  {{- if .Values.singleNodeCluster }}
-  # Single-node cluster: no other node exists to receive a cordoned node's
-  # workloads, so cordon/drain is a no-op at best, actively harmful at worst
-  # (rancher/rancher#48752 — the upgrade gets stuck waiting on an uncordon
-  # that can never happen). Explicitly disabled rather than left to default.
+  # Never drained, so a cordon would move nothing; it only risks leaving a
+  # single-node cluster cordoned after the upgrade (rancher/rancher#48752).
   cordon: false
-  {{- else }}
-  cordon: true
-  {{- end }}
   upgrade:
     image: rancher/rke2-upgrade
