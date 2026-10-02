@@ -16,8 +16,6 @@ spec:
       parameters:
         - name: clusterFqdnSuffix
           value: {{ .Values.clusterFqdnSuffix | quote }}
-        - name: hubbleEnabled
-          value: {{ .Values.hubbleEnabled | quote }}
   destination:
     server: https://kubernetes.default.svc
     namespace: traefik
