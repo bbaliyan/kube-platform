@@ -18,6 +18,10 @@ platformRevision: main
 # show no data.
 hubbleEnabled: false
 
+# Adds the NVIDIA GPU (DCGM) Grafana dashboard. Set by the parent bootstrap
+# Application from its own gpuOperatorEnabled, whose dcgm-exporter feeds it.
+gpuOperatorEnabled: false
+
 # ClusterIssuer used to mint the prometheus-operator admission-webhook TLS
 # cert via cert-manager (see prometheus-app.yaml) instead of the chart's
 # default self-signed create/patch Jobs — those Jobs self-delete via

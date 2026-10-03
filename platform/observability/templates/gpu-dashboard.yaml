@@ -1,0 +1,12 @@
+{{- if .Values.gpuOperatorEnabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-nvidia-gpu
+  namespace: {{ .Release.Namespace }}
+  labels:
+    grafana_dashboard: "1"
+data:
+  nvidia-gpu.json: |
+{{ .Files.Get "dashboards/nvidia-gpu.json" | indent 4 }}
+{{- end }}
