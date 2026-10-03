@@ -1,0 +1,55 @@
+{{- if .Values.gpuOperatorEnabled }}
+# nvidia-smi based exporter for the per-GPU detail dashboard (grafana.com
+# 14574) and its overview (25547), both shipped by the chart. Waits for
+# observability's wave so the ServiceMonitor/PrometheusRule CRDs exist.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nvidia-gpu-exporter
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  source:
+    repoURL: https://utkuozdemir.github.io/nvidia_gpu_exporter
+    chart: nvidia-gpu-exporter
+    targetRevision: {{ .Values.nvidiaGpuExporterVersion | quote }}
+    helm:
+      valuesObject:
+        runtimeClassName: nvidia
+        nodeSelector:
+          nvidia.com/gpu.present: "true"
+        tolerations:
+          - operator: Exists
+        # Per-process GPU memory for the dashboard's Processes panel.
+        computeApps:
+          enabled: true
+        hostPID: true
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
+        serviceMonitor:
+          enabled: true
+          additionalLabels:
+            release: prometheus
+        prometheusRule:
+          enabled: true
+          additionalLabels:
+            release: prometheus
+        grafanaDashboard:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gpu-operator
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+{{- end }}
