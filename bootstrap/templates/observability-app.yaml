@@ -21,6 +21,8 @@ spec:
           value: {{ .Values.platformRevision | quote }}
         - name: hubbleEnabled
           value: {{ .Values.hubbleEnabled | default false | quote }}
+        - name: gpuOperatorEnabled
+          value: {{ .Values.gpuOperatorEnabled | default false | quote }}
         - name: issuerName
           value: {{ .Values.pkiIssuerName | quote }}
       valuesObject:

@@ -13,18 +13,22 @@ spec:
     chart: gpu-operator
     targetRevision: {{ .Values.gpuOperatorVersion | quote }}
     helm:
-      values: |
-        driver:
-          enabled: true
-{{- if .Values.gpuOperatorHelmValues }}
       # Consumer-specific values (node selector/toleration so the operator's
       # DaemonSets target only GPU-labeled nodes, time-slicing/MPS config,
-      # etc.) — no generic equivalent to derive, so this is a straight
-      # passthrough, same pattern as storage-provisioner's
-      # storageProvisionerHelmValues.
+      # etc.) are merged over these defaults here rather than passed as a
+      # separate valuesObject: Argo CD uses valuesObject instead of values
+      # when both are set, which would silently drop the defaults.
+      {{- $defaults := `
+      driver:
+        enabled: true
+      dcgmExporter:
+        serviceMonitor:
+          enabled: true
+          additionalLabels:
+            release: prometheus
+      ` | fromYaml }}
       valuesObject:
-{{ .Values.gpuOperatorHelmValues | toYaml | indent 8 }}
-{{- end }}
+        {{- mustMergeOverwrite $defaults (.Values.gpuOperatorHelmValues | default dict) | toYaml | nindent 8 }}
   destination:
     server: https://kubernetes.default.svc
     namespace: gpu-operator
