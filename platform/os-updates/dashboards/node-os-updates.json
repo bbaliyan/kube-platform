@@ -75,7 +75,9 @@
             "uid": "${datasource}"
           },
           "expr": "count((max by (instance) (node_reboot_required) == 1) and on (instance) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"}) or vector(0)",
-          "refId": "A"
+          "refId": "A",
+          "instant": true,
+          "range": false
         }
       ],
       "fieldConfig": {
@@ -131,7 +133,9 @@
             "uid": "${datasource}"
           },
           "expr": "count(((sum by (instance) (apt_upgrades_pending) or sum by (instance) (yum_upgrades_pending)) > 0) and on (instance) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"}) or vector(0)",
-          "refId": "A"
+          "refId": "A",
+          "instant": true,
+          "range": false
         }
       ],
       "fieldConfig": {
@@ -187,7 +191,9 @@
             "uid": "${datasource}"
           },
           "expr": "sum((sum by (instance) (apt_upgrades_pending) or sum by (instance) (yum_upgrades_pending)) and on (instance) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"}) or vector(0)",
-          "refId": "A"
+          "refId": "A",
+          "instant": true,
+          "range": false
         }
       ],
       "fieldConfig": {
@@ -243,7 +249,9 @@
             "uid": "${datasource}"
           },
           "expr": "sum(sum by (instance) (apt_upgrades_pending{origin=~\".*-security.*\"}) and on (instance) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"}) or vector(0)",
-          "refId": "A"
+          "refId": "A",
+          "instant": true,
+          "range": false
         }
       ],
       "fieldConfig": {
@@ -299,7 +307,9 @@
             "uid": "${datasource}"
           },
           "expr": "count((node_uname_info{job=\"node-exporter\", nodename=~\"$node\"} unless on (instance) node_textfile_mtime_seconds{file=~\".*/os_updates.prom\"}) or ((time() - node_textfile_mtime_seconds{file=~\".*/os_updates.prom\"} > 3 * 3600) and on (instance) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"})) or vector(0)",
-          "refId": "A"
+          "refId": "A",
+          "instant": true,
+          "range": false
         }
       ],
       "fieldConfig": {
