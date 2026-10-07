@@ -1,0 +1,5 @@
+apiVersion: v2
+name: os-updates
+description: Pending OS package updates and reboot-required state per node, exposed through node-exporter's textfile collector.
+type: application
+version: 0.1.0

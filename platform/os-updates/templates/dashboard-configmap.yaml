@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-node-os-updates
+  labels:
+    grafana_dashboard: "1"
+data:
+  node-os-updates.json: |
+{{ .Files.Get "dashboards/node-os-updates.json" | indent 4 }}

@@ -283,6 +283,8 @@ spec:
         # resources: {}) -- fixed here alongside adding tolerations, which
         # would have no-op'd the same way under the wrong key.
         prometheus-node-exporter:
+          extraArgs:
+            - --collector.textfile.directory=/host/root/var/lib/node_exporter/textfile_collector
           resources:
             requests:
               cpu: 10m
