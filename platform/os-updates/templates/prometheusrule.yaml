@@ -1,0 +1,57 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: os-updates
+  labels:
+    release: prometheus
+spec:
+  groups:
+    - name: os-updates
+      rules:
+        - alert: NodeRebootRequired
+          expr: |
+            (node_reboot_required == 1)
+            * on (instance) group_left (nodename) node_uname_info
+          for: 7d
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.nodename }}`}} has needed a reboot for over 7 days."
+            description: Installed updates, typically a kernel, only take effect after a reboot.
+        - alert: NodeSecurityUpdatesPending
+          expr: |
+            (sum by (instance) (apt_upgrades_pending{origin=~".*-security.*"}) > 0)
+            * on (instance) group_left (nodename) node_uname_info
+          for: 7d
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.nodename }}`}} has had {{`{{ $value }}`}} security updates pending for over 7 days."
+            description: The OS auto-updater is not installing security updates on this node.
+        - alert: NodeOSUpdateMetricsMissing
+          expr: |
+            (
+              node_uname_info{job="node-exporter"}
+              unless on (instance) node_textfile_mtime_seconds{file=~".*/os_updates.prom"}
+            )
+            or
+            (
+              (time() - node_textfile_mtime_seconds{file=~".*/os_updates.prom"} > 3 * 3600)
+              * on (instance) group_left (nodename) node_uname_info
+            )
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.nodename }}`}} is not reporting OS update metrics."
+            description: The os-updates collector on this node is failing, or node-exporter cannot read its output.
+        - alert: NodePackageListsStale
+          expr: |
+            (time() - apt_package_cache_timestamp_seconds > 3 * 86400)
+            * on (instance) group_left (nodename) node_uname_info
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.nodename }}`}} has not refreshed its package lists for over 3 days."
+            description: Pending-update counts on this node are out of date.

@@ -1,0 +1,16 @@
+image:
+  repository: busybox
+  # renovate: datasource=docker depName=busybox
+  tag: "1.37.0"
+
+intervalSeconds: 3600
+
+# Must match node-exporter's --collector.textfile.directory (relative to the host root).
+textfileDirectory: /var/lib/node_exporter/textfile_collector
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 512Mi

@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: os-updates-collector
+  labels:
+    app.kubernetes.io/name: os-updates-collector
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: os-updates-collector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: os-updates-collector
+      annotations:
+        checksum/scripts: {{ (.Files.Glob "files/*").AsConfig | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: collector
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command: ["/bin/sh", "/scripts/collect.sh"]
+          env:
+            - name: INTERVAL_SECONDS
+              value: {{ .Values.intervalSeconds | quote }}
+            - name: TEXTFILE_DIR
+              value: {{ .Values.textfileDirectory | quote }}
+          securityContext:
+            privileged: true
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: host
+              mountPath: /host
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: host
+          hostPath:
+            path: /
+            type: Directory
+        - name: scripts
+          configMap:
+            name: os-updates-scripts
