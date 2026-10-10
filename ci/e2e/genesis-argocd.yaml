@@ -1,0 +1,6 @@
+# What a node's genesis install of Argo CD needs (kube-image's
+# helm-values/argocd-values.yaml, less its resources): a running Argo CD.
+# The argocd Application takes it over from there.
+configs:
+  params:
+    server.insecure: "true"
