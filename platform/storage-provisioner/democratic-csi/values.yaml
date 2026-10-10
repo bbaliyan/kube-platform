@@ -26,6 +26,11 @@ democratic-csi:
 
   storageClasses: []
 
+  # Every image is pinned here, at the chart's own defaults except the
+  # driver, which the chart leaves on :latest (v1.9.5 is the same code,
+  # bar its README). Renovate proposes each upgrade. The e2e job has no NAS
+  # to deploy this against, so CI only renders and validates them.
+  #
   # Every controller/node-plugin container is unset upstream (BestEffort QoS)
   # — confirmed the first candidates evicted/OOM-killed under real node memory
   # pressure on a live cluster, ahead of far less critical pods. These are
@@ -34,39 +39,75 @@ democratic-csi:
   # storageProvisionerHelmValues if a specific backend needs more headroom.
   controller:
     externalAttacher:
+      image:
+        registry: registry.k8s.io/sig-storage/csi-attacher
+        # renovate: datasource=docker depName=registry.k8s.io/sig-storage/csi-attacher
+        tag: v4.4.0
       resources:
         requests: {cpu: 10m, memory: 32Mi}
         limits: {cpu: 100m, memory: 128Mi}
     externalProvisioner:
+      image:
+        registry: registry.k8s.io/sig-storage/csi-provisioner
+        # renovate: datasource=docker depName=registry.k8s.io/sig-storage/csi-provisioner
+        tag: v3.6.0
       resources:
         requests: {cpu: 10m, memory: 32Mi}
         limits: {cpu: 100m, memory: 128Mi}
     externalResizer:
+      image:
+        registry: registry.k8s.io/sig-storage/csi-resizer
+        # renovate: datasource=docker depName=registry.k8s.io/sig-storage/csi-resizer
+        tag: v1.9.0
       resources:
         requests: {cpu: 10m, memory: 32Mi}
         limits: {cpu: 100m, memory: 128Mi}
     externalSnapshotter:
+      image:
+        registry: registry.k8s.io/sig-storage/csi-snapshotter
+        # renovate: datasource=docker depName=registry.k8s.io/sig-storage/csi-snapshotter
+        tag: v8.2.1
       resources:
         requests: {cpu: 10m, memory: 32Mi}
         limits: {cpu: 100m, memory: 128Mi}
     driver:
+      image:
+        registry: ghcr.io/democratic-csi/democratic-csi
+        # renovate: datasource=docker depName=ghcr.io/democratic-csi/democratic-csi
+        tag: v1.9.5
       resources:
         requests: {cpu: 20m, memory: 64Mi}
         limits: {cpu: 200m, memory: 256Mi}
   node:
     driver:
+      image:
+        registry: ghcr.io/democratic-csi/democratic-csi
+        # renovate: datasource=docker depName=ghcr.io/democratic-csi/democratic-csi
+        tag: v1.9.5
       resources:
         requests: {cpu: 20m, memory: 64Mi}
         limits: {cpu: 200m, memory: 256Mi}
     driverRegistrar:
+      image:
+        registry: registry.k8s.io/sig-storage/csi-node-driver-registrar
+        # renovate: datasource=docker depName=registry.k8s.io/sig-storage/csi-node-driver-registrar
+        tag: v2.9.0
       resources:
         requests: {cpu: 10m, memory: 32Mi}
         limits: {cpu: 100m, memory: 128Mi}
     cleanup:
+      image:
+        registry: docker.io/busybox
+        # renovate: datasource=docker depName=docker.io/busybox
+        tag: 1.37.0
       resources:
         requests: {cpu: 10m, memory: 32Mi}
         limits: {cpu: 100m, memory: 128Mi}
   csiProxy:
+    image:
+      registry: ghcr.io/democratic-csi/csi-grpc-proxy
+      # renovate: datasource=docker depName=ghcr.io/democratic-csi/csi-grpc-proxy
+      tag: v0.5.7
     resources:
       requests: {cpu: 10m, memory: 32Mi}
       limits: {cpu: 100m, memory: 128Mi}
