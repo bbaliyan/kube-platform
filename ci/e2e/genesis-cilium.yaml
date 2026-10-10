@@ -1,0 +1,17 @@
+# What a node's genesis install of Cilium sets (kube-image's
+# helm-values/cilium-values.yaml): just enough to bring the network up.
+# Argo CD's cilium Application takes it over from there with the platform's
+# own values.
+kubeProxyReplacement: true
+k8sServiceHost: "127.0.0.1"
+k8sServicePort: 6443
+nodeIPAM:
+  enabled: true
+defaultLBServiceIPAM: nodeipam
+operator:
+  replicas: 1
+  tolerations:
+    - operator: Exists
+ipam:
+  operator:
+    clusterPoolIPv4PodCIDRList: ["10.42.0.0/16"]

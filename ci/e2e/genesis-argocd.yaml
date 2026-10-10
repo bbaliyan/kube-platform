@@ -1,0 +1,31 @@
+# What a node's genesis install of Argo CD sets (kube-image's
+# helm-values/argocd-values.yaml): a running Argo CD. The argocd
+# Application takes it over from there with the platform's own values.
+configs:
+  params:
+    server.insecure: "true"
+repoServer:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  readinessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 5
+  livenessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 5
+controller:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  readinessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 5

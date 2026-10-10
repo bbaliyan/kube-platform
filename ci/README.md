@@ -13,6 +13,22 @@ against example clusters before it merges (`.github/workflows/ci.yaml`):
    kubeconform cannot compile), are not checked.
 3. `diff_comment.py` posts what changes against `main`, per cluster, as a PR
    comment. The full render is the workflow's `rendered-manifests` artifact.
+4. The `e2e` job deploys it for real: a kind cluster, Cilium and Argo CD
+   installed the way a node's genesis installs them (at `main`'s versions,
+   so a bump is tested as an upgrade), then the `kind.yaml` example cluster
+   pointed at the commit under test. It passes once every Application is
+   Synced and Healthy and every pod ready, steadily for a minute, and Argo
+   CD answers through Traefik with the platform's certificate. It fails as
+   soon as something is known to be broken: a sync out of retries or an
+   image that doesn't exist at once, other errors once they outlast what a
+   healthy bring-up goes through (`GRACE` in `e2e/wait.py`). Files in
+   `e2e/`.
+
+   kind can't stand in for everything: GPUs, iSCSI, Longhorn and EBS
+   storage, secret stores and the BYO CA, autoscaling and external-dns are
+   only rendered and validated. The single node also has no
+   `CriticalAddonsOnly` taint, and runs Debian where real nodes run
+   AlmaLinux.
 
 ## Example clusters
 
@@ -25,6 +41,7 @@ consumer writes it. Between them they switch on every optional template:
 | `aws.yaml` | kube-compute's `aws-cluster`: EBS, cluster-autoscaler + cloud controller manager, SSM secrets, BYO CA, external-dns, trusted internal CA |
 | `proxmox.yaml` | kube-compute's `proxmox-cluster`: Vault/OpenBao secrets and BYO CA, Cluster API autoscaling, local-path + Longhorn, extra Traefik port, Grafana plugins |
 | `azure-acme.yaml` | ACME certificates, Azure Key Vault secrets, Hubble off, no storage |
+| `kind.yaml` | what the e2e job deploys: self-signed certificates, Hubble, local-path |
 
 When a consumer turns on something none of these do, add it to the closest
 one (or add a file).
