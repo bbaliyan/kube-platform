@@ -136,7 +136,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 30
     permissions:
       contents: read
     env:
@@ -205,7 +205,9 @@ jobs:
             ci/clusters/kind.yaml | kubectl apply -f -
 
       - name: Wait for every Application and pod to be ready
-        run: python ci/e2e/wait.py 900
+        # Fails as soon as something is known to be broken; the timeout is
+        # only the backstop for a hang.
+        run: python ci/e2e/wait.py 600
 
       - name: Reach Argo CD through Traefik
         # Cilium's load balancer, Traefik serving the platform's wildcard
