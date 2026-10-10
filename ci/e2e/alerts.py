@@ -64,14 +64,18 @@ def when(rfc3339):
     return datetime.fromisoformat(t).timestamp()
 
 
-def scraped_then_evaluated():
-    """Whether every target has been scraped, and every rule group evaluated
-    since the last of those scrapes, so alerts reflect them."""
-    ts, gs = targets(), groups()
-    if not ts or not gs or any(t["lastScrape"].startswith("0001") for t in ts):
-        return False
-    last_scrape = max(when(t["lastScrape"]) for t in ts)
-    return all(when(g["lastEvaluation"]) > last_scrape for g in gs)
+def all_scraped_at():
+    """When every target had been scraped at least once, in Prometheus's
+    clock, or None if some haven't yet."""
+    ts = targets()
+    if not ts or any(t["lastScrape"].startswith("0001") for t in ts):
+        return None
+    return max(when(t["lastScrape"]) for t in ts)
+
+
+def all_evaluated_since(moment):
+    gs = groups()
+    return bool(gs) and all(when(g["lastEvaluation"]) > moment for g in gs)
 
 
 def expected(alert):
@@ -91,9 +95,14 @@ def describe(alert):
 
 def main():
     deadline = time.monotonic() + int(sys.argv[1])
+    # Every target scraped once, then every rule group run after that, so
+    # the alerts reflect every target. (Targets keep being scraped, so the
+    # moment is taken once, not recomputed.)
+    scraped = None
     while True:
         try:
-            if scraped_then_evaluated():
+            scraped = scraped or all_scraped_at()
+            if scraped and all_evaluated_since(scraped):
                 break
         except subprocess.CalledProcessError as e:
             print(f"Prometheus not answering yet: {e.stderr.strip()[:200]}", flush=True)
