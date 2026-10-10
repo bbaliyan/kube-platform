@@ -139,8 +139,9 @@ class Renderer:
         return self.work / f"{stem}-{len(os.listdir(self.work))}.yaml"
 
     def git_checkout(self, url, rev):
-        """Shallow-fetch an external git source at a branch, tag, commit or
-        HEAD, as Argo CD accepts; returns its path."""
+        """Shallow-fetch an external git source at a branch, tag, full commit
+        SHA or HEAD; returns its path. A short SHA or a tag constraint (v1.*),
+        which Argo CD also accepts, fails here."""
         key = (url, rev)
         if key not in self.git_cache:
             dest = self.work / f"git-{len(self.git_cache)}"
