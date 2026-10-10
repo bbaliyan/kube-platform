@@ -219,6 +219,11 @@ jobs:
           curl -sSf --retry 5 --retry-all-errors --cacert ca.crt \
             --resolve "argocd.kind.test:443:$ip" https://argocd.kind.test/healthz
 
+      - name: No Prometheus alerts firing
+        # What the platform's own monitoring says once it's up: a scrape
+        # target that's down or a rule that's true from the start.
+        run: python ci/e2e/alerts.py 180
+
       - name: Cluster state
         if: ${{ failure() }}
         run: |
