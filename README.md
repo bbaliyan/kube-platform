@@ -1,5 +1,7 @@
 # kube-platform
 
+[![CI](https://github.com/bbaliyan/kube-platform/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/bbaliyan/kube-platform/actions/workflows/ci.yaml?query=branch%3Amain)
+
 Turns a bare RKE2 cluster into one you can run real applications on. Point
 Argo CD at it and it installs, and keeps in sync, everything an app expects
 to already be there.
@@ -61,5 +63,15 @@ upgraded.
 
 ## CI
 
-Every PR renders the platform for each example cluster, validates it, and
-comments what would change. See [ci/README.md](ci/README.md).
+Every PR and every commit to `main` is checked on GitHub's runners:
+
+- **render**: renders the platform for each example cluster in
+  `ci/clusters/`, validates it against Kubernetes and CRD schemas, and
+  comments on the PR what it changes on each.
+- **e2e**: deploys the platform to a kind cluster and checks that every
+  Application syncs and turns Healthy, every pod is ready, and Argo CD
+  answers through Traefik.
+
+The badge above is `main`'s status. Each run's summary page shows the
+rendered diff and the state of every Application; on failure, it also has
+kind's logs. See [ci/README.md](ci/README.md) for details.
