@@ -62,6 +62,12 @@ democratic-csi:
       resources:
         requests: {cpu: 10m, memory: 32Mi}
         limits: {cpu: 100m, memory: 128Mi}
+    # Off by default; pinned so enabling it doesn't bring in an untracked tag.
+    externalHealthMonitorController:
+      image:
+        registry: registry.k8s.io/sig-storage/csi-external-health-monitor-controller
+        # renovate: datasource=docker depName=registry.k8s.io/sig-storage/csi-external-health-monitor-controller
+        tag: v0.14.0
     externalSnapshotter:
       image:
         registry: registry.k8s.io/sig-storage/csi-snapshotter

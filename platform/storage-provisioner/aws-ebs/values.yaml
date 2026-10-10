@@ -45,8 +45,8 @@ aws-ebs-csi-driver:
         # knob but is a no-op: the chart renders it as `.enabled | default
         # true`, and Helm's `default` treats false as unset.
         - --leader-election=false
-  # The cluster's default class. The upstream template emits only the keys
-  # set here (plus the provisioner), so a key left out is unset on the class.
+  # The cluster's default class. The upstream template emits the keys set
+  # here, plus the provisioner and a WaitForFirstConsumer default.
   #
   # No other backend's default-class annotation is demoted: no consumer pairs
   # another storage provisioner with aws-ebs on the same cluster. If one ever
