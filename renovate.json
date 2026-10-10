@@ -1,16 +1,9 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "kube-platform Renovate config. Every pinned version in this repo is either carried by a '# renovate:' annotation (see customManagers) or found by one of the enabled built-in managers. Argo CD syncs this repo's protected branch straight into live clusters, so nothing auto-merges here - every upgrade arrives as its own reviewable pull request.",
+  "description": "Argo CD syncs this repo's main branch straight into live clusters, so nothing automerges here.",
   "extends": [
-    "config:recommended",
-    ":semanticCommits",
-    ":dependencyDashboard"
+    "local>bbaliyan/renovate-config"
   ],
-  "labels": [
-    "renovate"
-  ],
-  "prConcurrentLimit": 20,
-  "prHourlyLimit": 0,
   "enabledManagers": [
     "custom.regex",
     "helm-values",
@@ -24,18 +17,6 @@
       "/^platform/system-upgrade-controller/.+\\.yaml$/"
     ]
   },
-  "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Any version carrying a '# renovate:' annotation on the line above it - platform-versions/values.yaml and every Argo CD Application targetRevision. registryUrl (Helm repositories) and versioning are optional; omit versioning to take the datasource default.",
-      "managerFilePatterns": [
-        "/^(bootstrap|platform)/.+\\.ya?ml$/"
-      ],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?(?: versioning=(?<versioning>\\S+))?[ \\t]*\\n[ \\t]*[\\w.-]+:[ \\t]*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
-      ]
-    }
-  ],
   "packageRules": [
     {
       "description": "RKE2 tags are semver plus an RKE2 build counter (v1.36.2+rke2r1), which no built-in versioning scheme parses.",
@@ -52,25 +33,11 @@
       "rangeStrategy": "pin"
     },
     {
-      "description": "Minor and major upgrades change platform behaviour - label them so they are not skimmed.",
-      "matchUpdateTypes": [
-        "minor",
-        "major"
+      "description": "Every platform upgrade is merged by hand.",
+      "matchPackageNames": [
+        "*"
       ],
-      "labels": [
-        "renovate",
-        "needs-review"
-      ]
+      "automerge": false
     }
-  ],
-  "vulnerabilityAlerts": {
-    "description": "Only fires for ecosystems GitHub raises advisories for, which is little of what this repo tracks. Kept so a security fix is labelled and unbatched if one ever does arrive.",
-    "labels": [
-      "renovate",
-      "security"
-    ],
-    "schedule": [
-      "at any time"
-    ]
-  }
+  ]
 }
