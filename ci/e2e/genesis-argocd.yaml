@@ -2,6 +2,9 @@
 # helm-values/argocd-values.yaml): a running Argo CD. The argocd
 # Application takes it over from there with the platform's own values.
 configs:
+  cm:
+    timeout.reconciliation: 30s
+    timeout.reconciliation.jitter: 10s
   params:
     server.insecure: "true"
 repoServer:

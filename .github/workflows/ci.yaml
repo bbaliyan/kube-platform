@@ -109,7 +109,10 @@ jobs:
       - name: Validate against Kubernetes and CRD schemas
         if: ${{ !cancelled() && steps.head.outcome == 'success' }}
         run: |
-          curl -sSfL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar xz kubeconform
+          base="https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}"
+          curl -sSfLO "$base/kubeconform-linux-amd64.tar.gz" -O "$base/CHECKSUMS"
+          grep ' kubeconform-linux-amd64.tar.gz$' CHECKSUMS | sha256sum -c
+          tar xzf kubeconform-linux-amd64.tar.gz kubeconform
           # Custom resources are checked against the CRDs the charts being
           # deployed ship, converted by kubeconform's own script. The CRDs
           # catalog, pinned, covers the system-upgrade-controller Plans, whose
