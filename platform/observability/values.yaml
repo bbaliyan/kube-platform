@@ -28,7 +28,9 @@ gpuOperatorEnabled: false
 # default self-signed create/patch Jobs — those Jobs self-delete via
 # ttlSecondsAfterFinished, which Argo CD's Helm-hook tracking then sees as
 # "resource missing" on every subsequent sync and fails permanently. Set by
-# the parent bootstrap Application from its own pkiIssuerName.
+# the parent bootstrap Application from its own pkiIssuerName. Empty under
+# certMode acme (a public CA can't issue for .svc names): the chart then
+# creates its own self-signed CA for the webhook.
 issuerName: platform-issuer
 
 # Grafana plugins installed at startup, as plugin ids optionally followed by

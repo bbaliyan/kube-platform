@@ -1,10 +1,13 @@
-# Self-contained secret store for the BYO CA — not shared with argocd-repo-creds
-# (a different, unrelated concern). Keeps pki-issuer deployable independently of
-# whether Argo CD repo credentials have been set up.
+{{- if .Values.cloudflareTokenRef }}
+{{- if not .Values.secretStoreType }}
+{{- fail "acmeCloudflareTokenRef needs secretStoreType to fetch it from" }}
+{{- end }}
+# Its own store, like byo's: pki-issuer stays deployable whether or not
+# Argo CD repo credentials are set up.
 apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
-  name: byo-ca-store
+  name: acme-store
 spec:
   provider:
     {{- if eq .Values.secretStoreType "vault" }}
@@ -23,7 +26,6 @@ spec:
     aws:
       service: ParameterStore
       region: {{ .Values.awsRegion | quote }}
-      # No auth block — AWS SDK default credential chain uses the EC2 instance profile.
     {{- else if eq .Values.secretStoreType "azure-keyvault" }}
     azurekv:
       tenantId: {{ .Values.azureTenantId | quote }}
@@ -32,3 +34,27 @@ spec:
     {{- else }}
     {{- fail (printf "unknown secretStoreType %q: vault, aws-ssm or azure-keyvault" .Values.secretStoreType) }}
     {{- end }}
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: cloudflare-api-token
+  namespace: cert-manager
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: acme-store
+    kind: ClusterSecretStore
+  target:
+    name: cloudflare-api-token
+    creationPolicy: Owner
+  data:
+    - secretKey: api-token
+      remoteRef:
+        {{- if eq .Values.secretStoreType "vault" }}
+        key: {{ trimPrefix "secret/data/" .Values.cloudflareTokenRef | quote }}
+        property: api-token
+        {{- else }}
+        key: {{ .Values.cloudflareTokenRef | quote }}
+        {{- end }}
+{{- end }}
