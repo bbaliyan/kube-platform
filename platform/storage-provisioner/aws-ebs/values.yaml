@@ -46,7 +46,7 @@ aws-ebs-csi-driver:
         # true`, and Helm's `default` treats false as unset.
         - --leader-election=false
   # The cluster's default class. The upstream template emits only the keys
-  # set here.
+  # set here (plus the provisioner), so a key left out is unset on the class.
   #
   # No other backend's default-class annotation is demoted: no consumer pairs
   # another storage provisioner with aws-ebs on the same cluster. If one ever
@@ -60,9 +60,9 @@ aws-ebs-csi-driver:
       reclaimPolicy: Delete
       # Without this, growing a PVC on this class is rejected by admission,
       # not by the CSI driver, so it fails at apply time with no way forward
-      # short of recreating the claim. Unlike the other fields here it is
-      # mutable, so it applies to the live class and the volumes already
-      # bound to it.
+      # short of recreating the claim. Unlike parameters, reclaimPolicy and
+      # volumeBindingMode it is mutable, so it applies to the live class and
+      # the volumes already bound to it.
       allowVolumeExpansion: true
       parameters:
         type: gp3
