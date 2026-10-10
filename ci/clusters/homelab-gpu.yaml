@@ -1,0 +1,105 @@
+# A single-node homelab cluster with an NVIDIA GPU, Hubble, and two
+# democratic-csi backends (iSCSI on a TrueNAS box), its root Application
+# written by hand rather than by kube-compute.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  destination:
+    namespace: argocd
+    server: https://kubernetes.default.svc
+  project: default
+  sources:
+    - repoURL: https://github.com/bbaliyan/kube-platform
+      targetRevision: main
+      path: bootstrap
+      helm:
+        parameters:
+          - name: platformRepoURL
+            value: https://github.com/bbaliyan/kube-platform
+          - name: platformRevision
+            value: main
+          - name: certMode
+            value: selfsigned
+          - name: clusterName
+            value: homelab-gpu
+          - name: clusterFqdnSuffix
+            value: homelab-gpu.lan
+          - name: trustedCaPemB64
+            value: ""
+        valueFiles:
+          - $values/platform/platform-versions/values.yaml
+        valuesObject:
+          ciliumOperatorReplicas: 1
+          hubbleEnabled: true
+          gpuOperatorEnabled: true
+          gpuOperatorHelmValues:
+            driver:
+              enabled: false
+            toolkit:
+              env:
+                - name: CONTAINERD_CONFIG
+                  value: /etc/containerd/config.toml
+                - name: CONTAINERD_SOCKET
+                  value: /run/k3s/containerd/containerd.sock
+            devicePlugin:
+              config:
+                create: true
+                name: time-slicing-config
+                default: shared
+                data:
+                  shared: |-
+                    version: v1
+                    sharing:
+                      timeSlicing:
+                        resources:
+                        - name: nvidia.com/gpu
+                          replicas: 3
+          storageProvisioners:
+            - name: nas-iscsi
+              type: democratic-csi
+              helmValues:
+                democratic-csi:
+                  driver:
+                    existingConfigSecret: nas-iscsi-driver-config
+                    config:
+                      driver: freenas-api-iscsi
+                  csiDriver:
+                    name: org.democratic-csi.freenas-api-iscsi
+                  storageClasses:
+                    - name: nas-iscsi
+                      defaultClass: true
+                      reclaimPolicy: Retain
+                      volumeBindingMode: Immediate
+                      allowVolumeExpansion: true
+                      parameters:
+                        fsType: ext4
+            - name: nas-iscsi-ssd
+              type: democratic-csi
+              helmValues:
+                democratic-csi:
+                  driver:
+                    existingConfigSecret: nas-iscsi-ssd-driver-config
+                    config:
+                      driver: freenas-api-iscsi
+                  csiDriver:
+                    name: org.democratic-csi.freenas-api-iscsi-ssd
+                  storageClasses:
+                    - name: nas-iscsi-ssd
+                      defaultClass: false
+                      reclaimPolicy: Retain
+                      volumeBindingMode: Immediate
+                      allowVolumeExpansion: true
+                      parameters:
+                        fsType: ext4
+    - repoURL: https://github.com/bbaliyan/kube-platform
+      targetRevision: main
+      ref: values
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

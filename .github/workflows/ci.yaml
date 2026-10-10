@@ -1,0 +1,126 @@
+# Checks what a PR would change on the clusters that track this repo before
+# it merges: they sync main straight away, so a bad merge reaches them all.
+# It also runs on every push to main, so main's commits carry a status too.
+#
+#   render: renders the platform for each example cluster in ci/clusters/
+#           the way Argo CD would (every Application, all the way down),
+#           posts the rendered diff against main as a PR comment, and
+#           validates the result against Kubernetes and CRD schemas.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # renovate: datasource=github-releases depName=helm/helm
+  HELM_VERSION: v4.2.1
+  # renovate: datasource=github-releases depName=yannh/kubeconform
+  KUBECONFORM_VERSION: v0.8.0
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - run: pip install --quiet pyyaml
+
+      - name: Kubernetes version the clusters run
+        # k8sVersion in platform-versions, so a Renovate bump of it renders
+        # and validates against the new version.
+        run: |
+          python -c "import yaml; print('KUBE_VERSION=' + yaml.safe_load(open('platform/platform-versions/values.yaml'))['k8sVersion'].lstrip('v').split('+')[0])" >> "$GITHUB_ENV"
+
+      - name: Render this branch
+        id: head
+        run: python ci/render.py . out/head
+
+      - name: Render main
+        id: base
+        if: github.event_name == 'pull_request'
+        # A main that no longer renders (say, an upstream chart version was
+        # pulled) shouldn't block the PR; the comment says so instead. Only a
+        # complete render is kept, so a partial one can't pose as the base.
+        continue-on-error: true
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          git worktree add -q ../base "$BASE"
+          # Render both sides with this branch's ci/ (scripts and example
+          # clusters), so a change to the harness itself doesn't show up as
+          # a manifest diff.
+          rm -rf ../base/ci
+          cp -r ci ../base/ci
+          python ci/render.py ../base out/base.tmp
+          mv out/base.tmp out/base
+
+      - name: Comment the rendered diff on the PR
+        # Before validation, so a PR that fails it still shows what it
+        # changes. A fork's PR gets a read-only token, so it reads the diff
+        # in the job summary instead.
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.head.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          python ci/diff_comment.py out/base out/head comment.md
+          cat comment.md >> "$GITHUB_STEP_SUMMARY"
+          [ "$SAME_REPO" = true ] || exit 0
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+                 --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- rendered-manifests-diff -->"))) | .id' | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@comment.md >/dev/null
+          else
+            gh pr comment "$PR" --body-file comment.md
+          fi
+
+      - name: Validate against Kubernetes and CRD schemas
+        if: ${{ !cancelled() && steps.head.outcome == 'success' }}
+        run: |
+          curl -sSfL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar xz kubeconform
+          # Custom resources are checked against the CRDs the charts being
+          # deployed ship, converted by kubeconform's own script. The CRDs
+          # catalog, pinned, covers the system-upgrade-controller Plans, whose
+          # CRD the controller installs itself. Every other missing schema
+          # fails the check rather than being skipped.
+          mkdir schemas
+          curl -sSfL "https://raw.githubusercontent.com/yannh/kubeconform/${KUBECONFORM_VERSION}/scripts/openapi2jsonschema.py" -o openapi2jsonschema.py
+          find "$PWD/out/head" -name 'CustomResourceDefinition_*.yaml' -print0 \
+            | (cd schemas && FILENAME_FORMAT='{fullgroup}-{kind}_{version}' xargs -0 python ../openapi2jsonschema.py >/dev/null)
+          ./kubeconform -strict -summary -output text \
+            -kubernetes-version "$KUBE_VERSION" \
+            -skip CustomResourceDefinition,ClusterSecretStore \
+            -schema-location default \
+            -schema-location 'schemas/{{.Group}}-{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/63669a570e231d4f1f8396d229a1de512bcf0a34/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            out/head
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: rendered-manifests
+          path: out/
+          if-no-files-found: ignore
