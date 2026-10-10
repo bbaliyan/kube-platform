@@ -186,7 +186,24 @@ def report(apps):
                 print(f"   {r['kind']} {where}: {r.get('status')}")
 
 
-def summary(apps, outcome, started, bad_pods=()):
+def containers(pod):
+    st = pod["status"]
+    return st.get("initContainerStatuses", []) + st.get("containerStatuses", [])
+
+
+def restarts_seen(pods):
+    found = []
+    for pod in pods:
+        for c in containers(pod):
+            if c.get("restartCount"):
+                last = c.get("lastState", {}).get("terminated", {})
+                found.append(f"{pod['metadata']['namespace']}/{pod['metadata']['name']} "
+                             f"{c['name']}: {c['restartCount']}x, last {last.get('reason', '?')} "
+                             f"(exit {last.get('exitCode', '?')})")
+    return found
+
+
+def summary(apps, outcome, started, bad_pods=(), restarted=()):
     """The run's summary page: the outcome and every Application's state."""
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if not path:
@@ -201,6 +218,9 @@ def summary(apps, outcome, started, bad_pods=()):
         lines.append(f"| {mark} {name} | {' | '.join(state(app))} | {note} |")
     if bad_pods:
         lines += ["", "Pods not ready:", "", *(f"- `{p}`" for p in bad_pods)]
+    if restarted:
+        lines += ["", "Containers that restarted along the way:", "",
+                  *(f"- `{r}`" for r in restarted)]
     with open(path, "a", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 
@@ -258,8 +278,7 @@ def main():
 
         waiting = [a for a in apps if not ready(a)]
         bad_pods = unready(pods)
-        restarts = sum(c.get("restartCount", 0) for p in pods
-                       for c in p["status"].get("containerStatuses", []))
+        restarts = sum(c.get("restartCount", 0) for p in pods for c in containers(p))
         if apps and not waiting and not bad_pods and restarts == last_restarts:
             stable_since = stable_since or now
         else:
@@ -284,7 +303,12 @@ def main():
 
     print(f"All {len(apps)} Applications ({', '.join(sorted(MANUAL))} compared only) "
           f"and every pod ready for {STABLE_FOR}s.")
-    summary(apps, "every Application and pod ready", started)
+    # Restarts the bring-up recovered from on its own, which pass but are
+    # worth knowing about (an OOMKilled init container, say).
+    restarted = restarts_seen(pods)
+    if restarted:
+        print("Containers that restarted along the way:\n" + "\n".join(restarted))
+    summary(apps, "every Application and pod ready", started, restarted=restarted)
 
 
 if __name__ == "__main__":

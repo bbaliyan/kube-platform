@@ -17,7 +17,7 @@ to already be there.
 | Certificates | cert-manager and its CSI driver: self-signed, your own CA, or ACME* | always |
 | Trusting an internal CA | trust-manager, distributing your CA to every namespace | `trustedCaPemB64` |
 | Secrets | External Secrets, reading Vault/OpenBao, AWS SSM or Azure Key Vault | store: `secretStoreType` |
-| Private git repos | Argo CD repo credentials from that store; trust for a git server with an internal CA | `secretStoreType`; `argocdTlsCertHostname` |
+| Private git repos | Argo CD repo credentials from that store; trust for a git server with an internal CA | `secretStoreType`; `trustedCaPemB64` + `argocdTlsCertHostname` |
 | Storage | AWS EBS, democratic-csi (TrueNAS iSCSI/NFS), Longhorn, local-path | `storageProvisioners` |
 | Metrics, dashboards, alerts | Prometheus, Grafana, Alertmanager | always |
 | Logs | Loki, collected by Alloy | always |
@@ -57,12 +57,16 @@ closest example from `ci/clusters/`. It must also load
 
 ## Upgrading
 
-Versions are pinned in `platform/platform-versions/values.yaml`, in each
-Application's `targetRevision` under `bootstrap/templates/`, and in the
-`Chart.yaml` files under `platform/`. Renovate opens the PRs; merging one
-upgrades every cluster. For RKE2 itself, then run
-`argocd app sync system-upgrade-plans` on each cluster when you want it
-upgraded.
+Versions are pinned in `platform/platform-versions/values.yaml`, in the
+Applications' `targetRevision` (under `bootstrap/templates/` and
+`platform/observability/templates/`), in `Chart.yaml` files, and as image
+tags in values files and manifests under `platform/`. Renovate opens the
+PRs; merging one upgrades every cluster.
+
+For RKE2 itself, after merging, run `argocd app sync system-upgrade-plans`
+on each cluster when you want it upgraded. A new RKE2 minor also needs the
+kind node image (`KIND_NODE_VERSION` in `.github/workflows/ci.yaml`) on the
+same minor, or e2e fails.
 
 ## CI
 
@@ -72,9 +76,11 @@ Every PR and every commit to `main` is checked on GitHub's runners:
   `ci/clusters/`, validates it against Kubernetes and CRD schemas, and
   comments on the PR what it changes on each.
 - **e2e**: deploys the platform to a kind cluster and checks that every
-  Application syncs and turns Healthy, every pod is ready, and Argo CD
-  answers through Traefik.
+  Application syncs and turns Healthy, every pod is ready, Argo CD answers
+  through Traefik, and the platform's own Prometheus has no alert, scrape
+  target or rule in trouble.
 
-The badge above is `main`'s status. Each run's summary page shows the
-rendered diff and the state of every Application; on failure, it also has
-kind's logs. See [ci/README.md](ci/README.md) for details.
+The badge above is `main`'s status. Each run's summary page shows the state
+of every Application and Prometheus's alerts, and on a PR the rendered
+diff. A failed e2e run uploads kind's logs as an artifact. See
+[ci/README.md](ci/README.md) for details.
