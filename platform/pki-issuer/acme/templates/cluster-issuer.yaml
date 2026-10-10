@@ -5,7 +5,7 @@ metadata:
 spec:
   acme:
     email: {{ required "acmeEmail is required when certMode is acme" .Values.email | quote }}
-    server: {{ .Values.server | quote }}
+    server: {{ .Values.server | default "https://acme-v02.api.letsencrypt.org/directory" | quote }}
     privateKeySecretRef:
       name: {{ .Values.issuerName }}-acme-key
     solvers:

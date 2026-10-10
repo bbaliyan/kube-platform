@@ -94,7 +94,8 @@ azureSecretName: ""   # Name of the Key Vault secret
 
 # ClusterIssuer name used for all cert-manager Certificate resources in this cluster.
 # Must match what workloads (ng-workloads) reference in their Certificate issuerRef.
-# Default "platform-issuer" suits the selfsigned mode; set to "org-ca-issuer" for byo.
+# byo and acme name their ClusterIssuer after it; selfsigned's is always
+# "platform-issuer", so leave the default there. "org-ca-issuer" suits byo.
 pkiIssuerName: platform-issuer
 
 # BYO CA (certMode: byo) — paths to the CA cert, chain, and key in the secret store.
@@ -113,9 +114,10 @@ azureByoCaKeyName: ""
 
 # ACME (certMode: acme): a public CA, Let's Encrypt by default, with
 # Cloudflare DNS-01. The ClusterIssuer is named pkiIssuerName.
-acmeEmail: ""           # required: account email for expiry notices
+acmeEmail: ""           # required: the CA's account notices go here
 acmeServer: https://acme-v02.api.letsencrypt.org/directory
 # The Cloudflare API token (Zone:DNS:Edit) in the secret store: SSM parameter,
 # KV v2 path (property api-token) or Key Vault secret name. Empty: create the
 # Secret cloudflare-api-token (key api-token) in cert-manager yourself.
+# Needs secretStoreType; once set, External Secrets owns that Secret.
 acmeCloudflareTokenRef: ""

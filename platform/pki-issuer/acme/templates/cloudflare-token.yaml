@@ -31,6 +31,8 @@ spec:
       tenantId: {{ .Values.azureTenantId | quote }}
       vaultUrl: {{ .Values.azureKeyVaultUrl | quote }}
       authType: WorkloadIdentity
+    {{- else }}
+    {{- fail (printf "unknown secretStoreType %q: vault, aws-ssm or azure-keyvault" .Values.secretStoreType) }}
     {{- end }}
 ---
 apiVersion: external-secrets.io/v1

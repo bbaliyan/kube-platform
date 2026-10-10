@@ -23,8 +23,10 @@ spec:
           value: {{ .Values.hubbleEnabled | default false | quote }}
         - name: gpuOperatorEnabled
           value: {{ .Values.gpuOperatorEnabled | default false | quote }}
+        # A public ACME CA can't issue for in-cluster .svc names; empty
+        # leaves the webhook certificate to the chart's own CA.
         - name: issuerName
-          value: {{ .Values.pkiIssuerName | quote }}
+          value: {{ if ne .Values.certMode "acme" }}{{ .Values.pkiIssuerName | quote }}{{ else }}""{{ end }}
       valuesObject:
         {{- mustMergeOverwrite (dict "platformNodeSelector" .Values.platformNodeSelector) .Values.observabilityExtraHelmValues | toYaml | nindent 8 }}
   destination:

@@ -2,8 +2,8 @@
 # Certificate issuerRef.
 issuerName: platform-issuer
 
-# ACME account email, required. The CA sends expiry and account notices
-# here, and Let's Encrypt rejects addresses at example domains.
+# ACME account email, required. The CA's account notices go here, and Let's
+# Encrypt rejects addresses at example domains.
 email: ""
 server: https://acme-v02.api.letsencrypt.org/directory
 
@@ -12,6 +12,8 @@ server: https://acme-v02.api.letsencrypt.org/directory
 # cloudflareTokenRef to fetch it from the cluster's secret store: the SSM
 # parameter, the KV v2 path (property api-token) or the Key Vault secret
 # name, per secretStoreType. Leave it empty to create the Secret yourself.
+# Once set, External Secrets owns the Secret: clearing it later deletes the
+# Secret, including one first made by hand.
 cloudflareTokenRef: ""
 
 # The secret store, for cloudflareTokenRef. Same settings as bootstrap's.
