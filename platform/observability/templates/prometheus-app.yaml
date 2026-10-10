@@ -310,6 +310,12 @@ spec:
           service:
             port: 2381
             targetPort: 2381
+
+        # No kube-proxy to scrape: Cilium replaces it (kube-compute sets
+        # disable-kube-proxy). Left on, KubeProxyDown fires on every cluster
+        # 15 minutes after it comes up, as CI's e2e alert check shows.
+        kubeProxy:
+          enabled: false
   destination:
     server: https://kubernetes.default.svc
     namespace: prometheus
