@@ -74,12 +74,12 @@ def report(apps):
         print(f"\n== {app['metadata']['name']}: {sync} / {health}")
         for e in errors(app):
             print(f"   {e}")
+        # Argo CD 3 doesn't keep resource health in the Application; the
+        # unready pods printed after this usually say why it's unhealthy.
         for r in app.get("status", {}).get("resources", []):
-            h = r.get("health", {})
-            if r.get("status") != "Synced" or h.get("status") not in (None, "Healthy"):
+            if r.get("status") != "Synced":
                 where = f"{r.get('namespace', '')}/{r['name']}".lstrip("/")
-                print(f"   {r['kind']} {where}: {r.get('status')} / "
-                      f"{h.get('status', '-')} {h.get('message', '')}".rstrip())
+                print(f"   {r['kind']} {where}: {r.get('status')}")
 
 
 def summary(apps, outcome, started, bad_pods=()):
@@ -126,7 +126,9 @@ def main():
         if time.monotonic() > deadline:
             print("::error::Timed out waiting for Applications to be Synced and Healthy")
             report(apps)
-            summary(apps, "timed out waiting for Applications", started)
+            bad = unready_pods()
+            print("\nPods not ready:\n" + "\n".join(bad or ["(none)"]))
+            summary(apps, "timed out waiting for Applications", started, bad)
             sys.exit(1)
         time.sleep(POLL)
     print(f"All {len(apps)} Applications are ready ({', '.join(sorted(MANUAL))} compared only).")
