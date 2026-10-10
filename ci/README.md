@@ -18,7 +18,9 @@ against example clusters before it merges (`.github/workflows/ci.yaml`):
    so a bump is tested as an upgrade), then the `kind.yaml` example cluster
    pointed at the commit under test. It passes once every Application is
    Synced and Healthy and every pod ready, steadily for a minute, and Argo
-   CD answers through Traefik with the platform's certificate. It fails as
+   CD answers through Traefik with the platform's certificate, and the
+   platform's own Prometheus has no warning or critical alert pending or
+   firing (`e2e/alerts.py`; a few are expected on kind, listed there). It fails as
    soon as something is known to be broken: a sync out of retries or an
    image that doesn't exist at once, other errors once they outlast what a
    healthy bring-up goes through (`GRACE` in `e2e/wait.py`). Files in
