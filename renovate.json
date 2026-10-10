@@ -33,6 +33,14 @@
       "rangeStrategy": "pin"
     },
     {
+      "description": "kind releases are built for specific node images, so the two move together.",
+      "matchDepNames": [
+        "kubernetes-sigs/kind",
+        "kindest/node"
+      ],
+      "groupName": "kind"
+    },
+    {
       "description": "Every platform upgrade is merged by hand.",
       "matchPackageNames": [
         "*"

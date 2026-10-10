@@ -1,0 +1,47 @@
+# The cluster CI's e2e job builds in kind and syncs for real (see
+# ci/e2e/): a single node with self-signed certificates, Hubble and
+# local-path storage, so everything it runs works without a cloud, a NAS or
+# a GPU. The job points both sources and platformRevision at the commit
+# under test.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://github.com/bbaliyan/kube-platform.git
+      targetRevision: main
+      path: bootstrap
+      helm:
+        valueFiles:
+          - $values/platform/platform-versions/values.yaml
+        parameters:
+          - name: platformRepoURL
+            value: https://github.com/bbaliyan/kube-platform.git
+          - name: platformRevision
+            value: main
+          - name: certMode
+            value: selfsigned
+          - name: clusterName
+            value: kind
+          - name: clusterFqdnSuffix
+            value: kind.test
+          - name: trustedCaPemB64
+            value: ""
+        valuesObject:
+          ciliumOperatorReplicas: 1
+          hubbleEnabled: true
+          storageProvisioners:
+            - name: local-path
+              type: local-path
+    - repoURL: https://github.com/bbaliyan/kube-platform.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: ["CreateNamespace=true"]
