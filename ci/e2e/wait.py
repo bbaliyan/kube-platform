@@ -12,6 +12,7 @@ sync, so it only passes once all of them have stayed ready for STABLE_POLLS
 polls in a row. On timeout it prints what is still wrong and exits non-zero.
 """
 import json
+import os
 import subprocess
 import sys
 import time
@@ -81,8 +82,28 @@ def report(apps):
                       f"{h.get('status', '-')} {h.get('message', '')}".rstrip())
 
 
+def summary(apps, outcome, started, bad_pods=()):
+    """The run's summary page: the outcome and every Application's state."""
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    lines = [f"## e2e: {outcome}", "",
+             f"{int(time.monotonic() - started)}s after the root Application was applied.", "",
+             "| Application | Sync | Health | |", "|---|---|---|---|"]
+    for app in sorted(apps, key=lambda a: a["metadata"]["name"]):
+        name = app["metadata"]["name"]
+        note = "synced by hand; compared only" if name in MANUAL else "; ".join(errors(app))
+        mark = "✅" if ready(app) else "❌"
+        lines.append(f"| {mark} {name} | {' | '.join(state(app))} | {note} |")
+    if bad_pods:
+        lines += ["", "Pods not ready:", "", *(f"- `{p}`" for p in bad_pods)]
+    with open(path, "a", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
 def main():
-    deadline = time.monotonic() + int(sys.argv[1])
+    started = time.monotonic()
+    deadline = started + int(sys.argv[1])
     stable = 0
     last_print = 0
     apps = []
@@ -105,6 +126,7 @@ def main():
         if time.monotonic() > deadline:
             print("::error::Timed out waiting for Applications to be Synced and Healthy")
             report(apps)
+            summary(apps, "timed out waiting for Applications", started)
             sys.exit(1)
         time.sleep(POLL)
     print(f"All {len(apps)} Applications are ready ({', '.join(sorted(MANUAL))} compared only).")
@@ -114,8 +136,10 @@ def main():
     if bad:
         print("::error::Pods not ready after every Application was:")
         print("\n".join(bad))
+        summary(apps, "pods not ready", started, bad)
         sys.exit(1)
     print("Every pod is ready.")
+    summary(apps, "every Application and pod ready", started)
 
 
 if __name__ == "__main__":
