@@ -44,6 +44,31 @@ spec:
           value: {{ .Values.azureByoCaChainName | quote }}
         - name: azureByoCaKeyName
           value: {{ .Values.azureByoCaKeyName | quote }}
+    {{- else if eq .Values.certMode "acme" }}
+    helm:
+      parameters:
+        - name: issuerName
+          value: {{ .Values.pkiIssuerName | quote }}
+        - name: email
+          value: {{ .Values.acmeEmail | quote }}
+        - name: server
+          value: {{ .Values.acmeServer | quote }}
+        - name: cloudflareTokenRef
+          value: {{ .Values.acmeCloudflareTokenRef | quote }}
+        - name: secretStoreType
+          value: {{ .Values.secretStoreType | quote }}
+        - name: awsRegion
+          value: {{ .Values.secretStoreRegion | default .Values.awsRegion | quote }}
+        - name: vaultAddr
+          value: {{ .Values.vaultAddr | quote }}
+        - name: vaultRole
+          value: {{ .Values.vaultRole | quote }}
+        - name: vaultAuthMountPath
+          value: {{ .Values.vaultAuthMountPath | quote }}
+        - name: azureKeyVaultUrl
+          value: {{ .Values.azureKeyVaultUrl | quote }}
+        - name: azureTenantId
+          value: {{ .Values.azureTenantId | quote }}
     {{- end }}
   destination:
     server: https://kubernetes.default.svc

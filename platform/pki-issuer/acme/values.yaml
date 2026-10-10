@@ -1,0 +1,24 @@
+# Name given to the ClusterIssuer; workloads reference it in their
+# Certificate issuerRef.
+issuerName: platform-issuer
+
+# ACME account email, required. The CA sends expiry and account notices
+# here, and Let's Encrypt rejects addresses at example domains.
+email: ""
+server: https://acme-v02.api.letsencrypt.org/directory
+
+# The Cloudflare API token (Zone:DNS:Edit) DNS-01 needs, as the Secret
+# cloudflare-api-token (key api-token) in cert-manager's namespace. Set
+# cloudflareTokenRef to fetch it from the cluster's secret store: the SSM
+# parameter, the KV v2 path (property api-token) or the Key Vault secret
+# name, per secretStoreType. Leave it empty to create the Secret yourself.
+cloudflareTokenRef: ""
+
+# The secret store, for cloudflareTokenRef. Same settings as bootstrap's.
+secretStoreType: ""   # vault | aws-ssm | azure-keyvault
+awsRegion: ""
+vaultAddr: ""
+vaultRole: ""
+vaultAuthMountPath: "kubernetes"
+azureKeyVaultUrl: ""
+azureTenantId: ""

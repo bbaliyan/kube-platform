@@ -1,0 +1,58 @@
+{{- if .Values.cloudflareTokenRef }}
+{{- if not .Values.secretStoreType }}
+{{- fail "acmeCloudflareTokenRef needs secretStoreType to fetch it from" }}
+{{- end }}
+# Its own store, like byo's: pki-issuer stays deployable whether or not
+# Argo CD repo credentials are set up.
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: acme-store
+spec:
+  provider:
+    {{- if eq .Values.secretStoreType "vault" }}
+    vault:
+      server: {{ .Values.vaultAddr | quote }}
+      path: "secret"
+      version: "v2"
+      auth:
+        kubernetes:
+          mountPath: {{ .Values.vaultAuthMountPath | quote }}
+          role: {{ .Values.vaultRole | quote }}
+          serviceAccountRef:
+            name: external-secrets
+            namespace: external-secrets
+    {{- else if eq .Values.secretStoreType "aws-ssm" }}
+    aws:
+      service: ParameterStore
+      region: {{ .Values.awsRegion | quote }}
+    {{- else if eq .Values.secretStoreType "azure-keyvault" }}
+    azurekv:
+      tenantId: {{ .Values.azureTenantId | quote }}
+      vaultUrl: {{ .Values.azureKeyVaultUrl | quote }}
+      authType: WorkloadIdentity
+    {{- end }}
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: cloudflare-api-token
+  namespace: cert-manager
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: acme-store
+    kind: ClusterSecretStore
+  target:
+    name: cloudflare-api-token
+    creationPolicy: Owner
+  data:
+    - secretKey: api-token
+      remoteRef:
+        {{- if eq .Values.secretStoreType "vault" }}
+        key: {{ trimPrefix "secret/data/" .Values.cloudflareTokenRef | quote }}
+        property: api-token
+        {{- else }}
+        key: {{ .Values.cloudflareTokenRef | quote }}
+        {{- end }}
+{{- end }}

@@ -30,8 +30,9 @@ to already be there.
 | Scheduling priority | `platform` and `workload-critical` PriorityClasses | always |
 | GitOps | Argo CD, managing itself | always |
 
-\* ACME uses Let's Encrypt with Cloudflare DNS-01: set the email in
-`platform/pki-issuer/acme/` and provide a `cloudflare-api-token` Secret.
+\* ACME uses Let's Encrypt (or any ACME CA) with Cloudflare DNS-01: set
+`acmeEmail`, and `acmeCloudflareTokenRef` to fetch the Cloudflare token from
+the secret store (or create the `cloudflare-api-token` Secret yourself).
 
 Every switch is a parameter on the root Application; `bootstrap/values.yaml`
 lists them all.

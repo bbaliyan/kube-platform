@@ -1,0 +1,5 @@
+apiVersion: v2
+name: pki-issuer-acme
+description: cert-manager ClusterIssuer for an ACME CA (Let's Encrypt by default) using Cloudflare DNS-01.
+type: application
+version: 0.1.0

@@ -110,3 +110,12 @@ vaultByoCaPath: ""      # e.g. secret/data/kube/cluster-1/byo-ca
 azureByoCaCertName: ""
 azureByoCaChainName: ""
 azureByoCaKeyName: ""
+
+# ACME (certMode: acme): a public CA, Let's Encrypt by default, with
+# Cloudflare DNS-01. The ClusterIssuer is named pkiIssuerName.
+acmeEmail: ""           # required: account email for expiry notices
+acmeServer: https://acme-v02.api.letsencrypt.org/directory
+# The Cloudflare API token (Zone:DNS:Edit) in the secret store: SSM parameter,
+# KV v2 path (property api-token) or Key Vault secret name. Empty: create the
+# Secret cloudflare-api-token (key api-token) in cert-manager yourself.
+acmeCloudflareTokenRef: ""

@@ -22,6 +22,10 @@ spec:
             value: "main"
           - name: certMode
             value: "acme"
+          - name: acmeEmail
+            value: "platform-team@example.org"
+          - name: acmeCloudflareTokenRef
+            value: "cloudflare-api-token"
           - name: clusterName
             value: "cluster-2"
           - name: clusterFqdnSuffix
