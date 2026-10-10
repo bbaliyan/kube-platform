@@ -14,10 +14,18 @@ against example clusters before it merges (`.github/workflows/ci.yaml`):
 3. `diff_comment.py` posts what changes against `main`, per cluster, as a PR
    comment. The full render is the workflow's `rendered-manifests` artifact.
 4. The `e2e` job deploys it for real: a kind cluster, Cilium and Argo CD
-   installed the way a node's genesis installs them, then the `kind.yaml`
-   example cluster pointed at the commit under test. It passes once every
-   automatically synced Application is Synced and Healthy and Argo CD
-   answers through Traefik. Files in `e2e/`.
+   installed the way a node's genesis installs them (at `main`'s versions,
+   so a bump is tested as an upgrade), then the `kind.yaml` example cluster
+   pointed at the commit under test. It passes once every Application has
+   synced and is Healthy for two minutes, every pod is ready, and Argo CD
+   answers through Traefik with the platform's certificate. Files in
+   `e2e/`.
+
+   kind can't stand in for everything: GPUs, iSCSI, Longhorn and EBS
+   storage, secret stores and the BYO CA, autoscaling and external-dns are
+   only rendered and validated. The single node also has no
+   `CriticalAddonsOnly` taint, and runs Debian where real nodes run
+   AlmaLinux.
 
 ## Example clusters
 

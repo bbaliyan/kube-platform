@@ -7,8 +7,8 @@
 #           posts the rendered diff against main as a PR comment, and
 #           validates the result against Kubernetes and CRD schemas.
 #   e2e:    builds a kind cluster the way a node's genesis does, points Argo
-#           CD at this commit, and waits for every Application to sync and
-#           turn Healthy. See ci/e2e/.
+#           CD at this commit, and waits for the platform to sync and come
+#           up healthy. See ci/e2e/.
 name: CI
 
 on:
@@ -32,8 +32,8 @@ env:
   KUBECONFORM_VERSION: v0.8.0
   # renovate: datasource=github-releases depName=kubernetes-sigs/kind
   KIND_VERSION: v0.33.0
-  # Keep on the same minor as k8sVersion in platform-versions; the e2e job
-  # warns when they drift apart.
+  # Must be on the same minor as k8sVersion in platform-versions; the e2e
+  # job fails when they drift apart.
   # renovate: datasource=docker depName=kindest/node
   KIND_NODE_VERSION: v1.37.0
 
@@ -136,13 +136,14 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 40
     permissions:
       contents: read
     env:
-      # Argo CD fetches this commit from GitHub itself. A PR's head commit
-      # is fetchable from this repo even when it comes from a fork.
-      REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+      # The commit checked out: on a PR, the PR merged into main, the same
+      # one render tests. Argo CD fetches it from GitHub itself, which
+      # serves it from the PR's merge ref even when the PR comes from a fork.
+      REVISION: ${{ github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -154,33 +155,45 @@ jobs:
 
       - name: Create a kind cluster
         run: |
-          versions=platform/platform-versions/values.yaml
-          k8s=$(yq '.k8sVersion' "$versions")
+          k8s=$(yq '.k8sVersion' platform/platform-versions/values.yaml)
           case "$k8s" in "${KIND_NODE_VERSION%.*}".*) ;; *)
-            echo "::warning::kindest/node $KIND_NODE_VERSION is not on the minor of k8sVersion $k8s" ;;
+            echo "::error::kindest/node $KIND_NODE_VERSION is not on the minor of k8sVersion $k8s"
+            exit 1 ;;
           esac
-          curl -sSfLo kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
-          chmod +x kind
+          base="https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}"
+          curl -sSfLO "$base/kind-linux-amd64" -O "$base/kind-linux-amd64.sha256sum"
+          sha256sum -c kind-linux-amd64.sha256sum
+          install kind-linux-amd64 kind
           ./kind create cluster --config ci/e2e/kind-config.yaml \
             --image "kindest/node:${KIND_NODE_VERSION}" --wait 0s
 
       - name: Genesis install of Cilium and Argo CD
         # What a node's first boot installs before Argo CD takes over: both
-        # charts at the versions in platform-versions, applied as plain
-        # manifests. kind's own storage class goes, so the platform's
-        # local-path is the only default.
+        # charts applied as plain manifests. On a PR, at main's versions, so
+        # a version bump is tested as the upgrade it is on every cluster.
+        # kind's own local-path provisioner goes, so the platform's is the
+        # only one.
+        env:
+          BASE: ${{ github.base_ref }}
         run: |
-          versions=platform/platform-versions/values.yaml
+          if [ -n "$BASE" ]; then
+            git fetch -q --depth 1 origin "$BASE"
+            git show FETCH_HEAD:platform/platform-versions/values.yaml > genesis-versions.yaml
+          else
+            cp platform/platform-versions/values.yaml genesis-versions.yaml
+          fi
           helm template cilium cilium --repo https://helm.cilium.io/ \
-              --version "$(yq '.ciliumVersion' "$versions")" \
+              --version "$(yq '.ciliumVersion' genesis-versions.yaml)" \
               --namespace kube-system --include-crds -f ci/e2e/genesis-cilium.yaml \
             | kubectl apply --server-side -f - >/dev/null
           kubectl wait --for=condition=Ready node --all --timeout=5m
           kubectl delete storageclass standard
+          kubectl delete clusterrole local-path-provisioner-role
+          kubectl delete clusterrolebinding local-path-provisioner-bind
           kubectl delete namespace local-path-storage --wait=false
           kubectl create namespace argocd
           helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm \
-              --version "$(yq '.argocdVersion' "$versions")" \
+              --version "$(yq '.argocdVersion' genesis-versions.yaml)" \
               --namespace argocd --include-crds -f ci/e2e/genesis-argocd.yaml \
             | kubectl apply --server-side -n argocd -f - >/dev/null
           kubectl -n argocd rollout status deployment,statefulset --timeout=5m
@@ -191,20 +204,30 @@ jobs:
             | (.spec.sources[0].helm.parameters[] | select(.name == "platformRevision") | .value) = strenv(REVISION)' \
             ci/clusters/kind.yaml | kubectl apply -f -
 
-      - name: Wait for every Application to be Synced and Healthy
-        run: python ci/e2e/wait.py 1800
+      - name: Wait for every Application and pod to be ready
+        run: python ci/e2e/wait.py 900
 
       - name: Reach Argo CD through Traefik
-        # Cilium's load balancer, Traefik, the wildcard certificate and the
-        # platform's own route, end to end.
+        # Cilium's load balancer, Traefik serving the platform's wildcard
+        # certificate (trusted here as its own CA, being self-signed), and
+        # the platform's route to Argo CD.
         run: |
+          kubectl -n traefik get secret wildcard-tls -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
           ip=$(kubectl -n traefik get service traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          curl -sSf --retry 5 --retry-all-errors -k --resolve "argocd.kind.test:443:$ip" \
-            https://argocd.kind.test/healthz
+          curl -sSf --retry 5 --retry-all-errors --cacert ca.crt \
+            --resolve "argocd.kind.test:443:$ip" https://argocd.kind.test/healthz
 
       - name: Cluster state
         if: ${{ failure() }}
         run: |
           kubectl get applications -n argocd
-          kubectl get pods -A -o wide | grep -Ev ' (Running|Completed) ' || true
+          kubectl get pods -A -o wide | awk 'NR == 1 || $4 != "Completed" && split($3, r, "/") && r[1] != r[2]'
           kubectl get events -A --field-selector type=Warning --sort-by=.lastTimestamp | tail -50
+          ./kind export logs kind-logs >/dev/null
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() }}
+        with:
+          name: kind-logs
+          path: kind-logs/
+          if-no-files-found: ignore
