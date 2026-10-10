@@ -45,15 +45,24 @@ aws-ebs-csi-driver:
         # knob but is a no-op: the chart renders it as `.enabled | default
         # true`, and Helm's `default` treats false as unset.
         - --leader-election=false
+  # The cluster's default class. The upstream template emits only the keys
+  # set here.
+  #
+  # No other backend's default-class annotation is demoted: no consumer pairs
+  # another storage provisioner with aws-ebs on the same cluster. If one ever
+  # does, arbitrate the default in bootstrap/, across every backend, rather
+  # than having this chart reach into another one's StorageClass by name.
   storageClasses:
     - name: ebs-gp3
       annotations:
         storageclass.kubernetes.io/is-default-class: "true"
       volumeBindingMode: WaitForFirstConsumer
       reclaimPolicy: Delete
-      # Kept in step with templates/storageclass.yaml, which explains it. The
-      # upstream template emits only the keys present here, so omitting it
-      # leaves the class unable to expand.
+      # Without this, growing a PVC on this class is rejected by admission,
+      # not by the CSI driver, so it fails at apply time with no way forward
+      # short of recreating the claim. Unlike the other fields here it is
+      # mutable, so it applies to the live class and the volumes already
+      # bound to it.
       allowVolumeExpansion: true
       parameters:
         type: gp3
