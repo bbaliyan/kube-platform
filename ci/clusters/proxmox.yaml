@@ -1,0 +1,77 @@
+# A Proxmox cluster as kube-compute's proxmox-cluster module renders it
+# (node-bootstrap's platform_app_yaml): repo credentials and a BYO CA from
+# OpenBao/Vault, Cluster API autoscaling, local-path plus Longhorn storage,
+# an extra Traefik entrypoint and Grafana plugins on a named storage class.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://github.com/bbaliyan/kube-platform.git
+      targetRevision: main
+      path: bootstrap
+      helm:
+        valueFiles:
+          - $values/platform/platform-versions/values.yaml
+        parameters:
+          - name: platformRepoURL
+            value: "https://github.com/bbaliyan/kube-platform.git"
+          - name: platformRevision
+            value: "main"
+          - name: certMode
+            value: "byo"
+          - name: pkiIssuerName
+            value: "org-ca-issuer"
+          - name: vaultByoCaPath
+            value: "secret/data/kube/cluster-1/byo-ca"
+          - name: clusterName
+            value: "cluster-1"
+          - name: clusterFqdnSuffix
+            value: "cluster-1.lan"
+          - name: trustedCaPemB64
+            value: ""
+          - name: secretStoreType
+            value: "vault"
+          - name: vaultAddr
+            value: "http://192.0.2.22:8200"
+          - name: vaultRole
+            value: "eso-kube-apps"
+          - name: vaultSecretPath
+            value: "secret/data/kube/cluster-1/repo-cred"
+          - name: repoCredsUrlPrefix
+            value: "https://git.example.com/"
+          - name: repoCredsUsername
+            value: "deploy-token"
+          - name: clusterAutoscalerEnabled
+            value: "true"
+        valuesObject:
+          extraTags: {}
+          traefikExtraConfig:
+            ports:
+              postgres:
+                port: 5432
+                expose:
+                  default: true
+                exposedPort: 5432
+                protocol: TCP
+          observabilityExtraHelmValues:
+            storageClassName: longhorn
+            grafanaPlugins:
+              - mssql
+          storageProvisioners:
+            - name: local-path
+              type: local-path
+            - name: longhorn
+              type: longhorn
+    - repoURL: https://github.com/bbaliyan/kube-platform.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: ["CreateNamespace=true"]

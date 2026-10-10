@@ -1,0 +1,47 @@
+# A minimal cluster: Let's Encrypt (ACME) certificates, repo credentials from
+# Azure Key Vault, Hubble off, and no storage provisioner. Covers the branches
+# the other example clusters leave off.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://github.com/bbaliyan/kube-platform.git
+      targetRevision: main
+      path: bootstrap
+      helm:
+        valueFiles:
+          - $values/platform/platform-versions/values.yaml
+        parameters:
+          - name: platformRepoURL
+            value: "https://github.com/bbaliyan/kube-platform.git"
+          - name: platformRevision
+            value: "main"
+          - name: certMode
+            value: "acme"
+          - name: clusterName
+            value: "cluster-2"
+          - name: clusterFqdnSuffix
+            value: "cluster-2.example.com"
+          - name: secretStoreType
+            value: "azure-keyvault"
+          - name: azureKeyVaultUrl
+            value: "https://example-kv.vault.azure.net"
+          - name: azureTenantId
+            value: "00000000-0000-0000-0000-000000000000"
+          - name: azureSecretName
+            value: "repo-cred"
+          - name: repoCredsUrlPrefix
+            value: "git@github.com:example/"
+    - repoURL: https://github.com/bbaliyan/kube-platform.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: ["CreateNamespace=true"]

@@ -3,3 +3,8 @@
 *.tfstate
 *.tfstate.backup
 .DS_Store
+
+# Built by helm dependency build (Argo CD and ci/render.py build them themselves)
+platform/**/charts/
+platform/**/Chart.lock
+__pycache__/

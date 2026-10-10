@@ -1,0 +1,82 @@
+# An autoscaled AWS cluster as kube-compute's aws-cluster module renders it
+# (node-bootstrap's platform_app_yaml): EBS storage, cluster-autoscaler and
+# the cloud controller manager, repo credentials and a BYO CA from SSM,
+# external-dns, and an internal CA that Argo CD trusts for its git server.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://github.com/bbaliyan/kube-platform.git
+      targetRevision: main
+      path: bootstrap
+      helm:
+        valueFiles:
+          - $values/platform/platform-versions/values.yaml
+        parameters:
+          - name: platformRepoURL
+            value: "https://github.com/bbaliyan/kube-platform.git"
+          - name: platformRevision
+            value: "main"
+          - name: certMode
+            value: "byo"
+          - name: clusterName
+            value: "cluster-1"
+          - name: clusterFqdnSuffix
+            value: "cluster-1.example.internal"
+          # A throwaway self-signed CA, only ever used here.
+          - name: trustedCaPemB64
+            value: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJvakNDQVVtZ0F3SUJBZ0lVRE1SZkR3VG92cEVPam12akdSaHVoUkxyY2hFd0NnWUlLb1pJemowRUF3SXcKSmpFa01DSUdBMVVFQXd3YmEzVmlaUzF3YkdGMFptOXliU0JEU1NCbGVHRnRjR3hsSUVOQk1DQVhEVEkyTVRBeApNREEwTXpBeU0xb1lEekl4TWpZd09URTJNRFF6TURJeldqQW1NU1F3SWdZRFZRUUREQnRyZFdKbExYQnNZWFJtCmIzSnRJRU5KSUdWNFlXMXdiR1VnUTBFd1dUQVRCZ2NxaGtqT1BRSUJCZ2dxaGtqT1BRTUJCd05DQUFTdjdFc1MKZkFCRWt1UzV3SmdQU2ZmMVRaNXRid1VVQld1NHZ6cFZYdDlXOGlHeUhCWmpDVGdsVVlZSHAwSlRxU0RtU3dSaQo5U3g2NG9FTHlaVnl4R1ZEbzFNd1VUQWRCZ05WSFE0RUZnUVVqK0w2R2svbU5odS9iclVOMklGV0xySzRHajR3Ckh3WURWUjBqQkJnd0ZvQVVqK0w2R2svbU5odS9iclVOMklGV0xySzRHajR3RHdZRFZSMFRBUUgvQkFVd0F3RUIKL3pBS0JnZ3Foa2pPUFFRREFnTkhBREJFQWlCQ3UybTlsMG9xT0NLZnlBS2JlOEhEVDJHUFlFdkFQNTFTTURyZgpnVVpsakFJZ0c2Mjc0K3picW9kdTRUSUtYUjd0a0VvK2ZvR2lxd2ljZ0FFVXZiNml5ZkU9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"
+          - name: argocdTlsCertHostname
+            value: "git.example.internal"
+          - name: secretStoreType
+            value: "aws-ssm"
+          - name: awsRegion
+            value: "eu-west-1"
+          - name: ssmParameterPath
+            value: "/kube/cluster-1/repo-cred"
+          - name: repoCredsUrlPrefix
+            value: "git@github.com:example/"
+          - name: pkiIssuerName
+            value: "org-ca-issuer"
+          - name: ssmByoCaCertPath
+            value: "/kube/cluster-1/ca-cert"
+          - name: ssmByoCaChainPath
+            value: "/kube/cluster-1/ca-chain"
+          - name: ssmByoCaKeyPath
+            value: "/kube/cluster-1/ca-key"
+          - name: clusterAutoscalerEnabled
+            value: "true"
+          - name: clusterAutoscalerCloudProvider
+            value: "aws"
+          - name: clusterAutoscalerCoresTotal
+            value: "0:16"
+          - name: clusterAutoscalerMemoryTotal
+            value: "0:64"
+          - name: externalDnsEnabled
+            value: "true"
+          - name: externalDnsDomainFilter
+            value: "example.internal"
+          - name: dnsOwnerId
+            value: "cluster-1-eu-west-1"
+        valuesObject:
+          ciliumOperatorReplicas: 2
+          platformNodeSelector:
+            kube-compute.io/node-group: platform
+          extraTags:
+            Environment: ci
+          storageProvisioners:
+            - name: ebs
+              type: aws-ebs
+    - repoURL: https://github.com/bbaliyan/kube-platform.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: ["CreateNamespace=true"]
