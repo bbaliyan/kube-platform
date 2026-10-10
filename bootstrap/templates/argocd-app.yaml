@@ -107,6 +107,17 @@ spec:
               memory: 32Mi
             limits:
               memory: 128Mi
+          # The copyutil init container copies the ~200 MB argocd binary into
+          # dex's pod, and the page cache it fills counts against its memory.
+          # It otherwise inherits dex's limit above and is OOMKilled on every
+          # first start (seen in CI's e2e), succeeding only on retry.
+          initImage:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 512Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
