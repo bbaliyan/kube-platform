@@ -34,8 +34,8 @@ KIND_ONLY = {
     # etcd-expose-metrics also serves them on the node IP.
     "kube-etcd": ("etcd metrics on localhost only",
                   {"TargetDown", "etcdMembersDown", "etcdInsufficientMembers"}),
-    # Both listen on 127.0.0.1, on kind and on RKE2 alike (see
-    # prometheus-app.yaml); left here for when RKE2 is fixed.
+    # Both listen on 127.0.0.1 on kind, as on RKE2 by default; nodes built
+    # by kube-compute bind them beyond loopback (kube-compute#43).
     "kube-scheduler": ("listens on localhost only",
                        {"TargetDown", "KubeSchedulerInstanceUnreachable"}),
     "kube-controller-manager": ("listens on localhost only",
