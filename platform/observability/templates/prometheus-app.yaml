@@ -88,10 +88,13 @@ spec:
               memory: 192Mi
             limits:
               memory: 1Gi
+{{- $ini := mustMergeOverwrite (dict "server" (dict "root_url" "%(protocol)s://%(domain)s/" "serve_from_sub_path" false)) (deepCopy .Values.grafanaIni) }}
           grafana.ini:
-            server:
-              root_url: "%(protocol)s://%(domain)s/"
-              serve_from_sub_path: false
+{{ toYaml $ini | indent 12 }}
+{{- if .Values.grafanaEnvFromSecrets }}
+          envFromSecrets:
+{{ toYaml .Values.grafanaEnvFromSecrets | indent 12 }}
+{{- end }}
           sidecar:
             # Both sidecars; they list and watch every ConfigMap and Secret in the cluster.
             resources:
