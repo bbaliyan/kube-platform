@@ -27,18 +27,13 @@ spec:
     targetRevision: {{ .Values.argocdVersion | quote }}
     helm:
       values: |
+{{- $configs := mustMergeOverwrite (dict "cm" (dict "timeout.reconciliation" "30s" "timeout.reconciliation.jitter" "10s") "params" (dict "server.insecure" "true")) (deepCopy (.Values.argocdExtraConfigs | default dict)) }}
+        # configs.cm timeouts: how soon an Application whose comparison failed is
+        # compared again. The default two minutes plus jitter was most of a new
+        # cluster's bring-up time. Keep equal to the genesis render in kube-image.
+        # server.insecure: TLS terminates upstream; Argo CD serves plain HTTP.
         configs:
-          # Also how soon an Application whose comparison failed is compared
-          # again. On a new cluster that is every Application waiting on repo
-          # credentials or a CRD from another one, and the default two minutes
-          # plus up to one of jitter was most of the bring-up time. Keep equal
-          # to the genesis render's values in kube-image.
-          cm:
-            timeout.reconciliation: 30s
-            timeout.reconciliation.jitter: 10s
-          params:
-            # Deliberate: TLS terminates upstream (ingress / load balancer); Argo CD serves plain HTTP behind it.
-            server.insecure: "true"
+{{ toYaml $configs | indent 10 }}
         global:
           {{- include "platform.placement" . | nindent 10 }}
         # The chart sets no resources. Requests are what a small cluster uses

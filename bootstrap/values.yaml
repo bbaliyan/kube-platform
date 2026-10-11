@@ -46,6 +46,10 @@ traefikExtraConfig: {}          # traefikExtraConfig.ports entries are merged in
 # platform_extra_helm_parameters.
 argocdControllerMemoryLimit: "2Gi"
 
+# Merged over Argo CD's chart `configs` (cm, rbac, params, ...), e.g. an SSO
+# login via cm."oidc.config" and rbac."policy.csv". Empty by default.
+argocdExtraConfigs: {}
+
 # Hostname whose TLS certificate should be verified against the trustedCaPemB64
 # CA instead of the repo-server's bundled public CAs — needed when Argo CD syncs
 # repos over HTTPS from a git server with an internally-issued certificate (the
