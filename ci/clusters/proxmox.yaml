@@ -61,6 +61,16 @@ spec:
             storageClassName: longhorn
             grafanaPlugins:
               - mssql
+            grafanaIni:
+              server:
+                root_url: https://grafana.example.com/
+              auth.generic_oauth:
+                enabled: true
+                client_id: $__env{GF_AUTH_GENERIC_OAUTH_CLIENT_ID}
+                client_secret: $__env{GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET}
+            grafanaEnvFromSecrets:
+              - name: grafana-oauth
+                optional: true
           storageProvisioners:
             - name: local-path
               type: local-path

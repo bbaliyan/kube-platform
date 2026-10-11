@@ -89,4 +89,14 @@ nodeExporterTolerations: []
 # shared clusters. Receivers, chat ids and tokens stay in the consumer's repo.
 alertmanagerConfigMatcherStrategy: ""
 
+# Merged over the platform's grafana.ini (a key set here wins). Use it for
+# single sign-on with any provider (auth.google, auth.generic_oauth, ...); keep
+# client ids and secrets in a Secret listed in grafanaEnvFromSecrets and refer
+# to them as $__env{GF_...}.
+grafanaIni: {}
+
+# Secrets whose keys become environment variables in the Grafana pod, as
+# {name: <secret>, optional: true}.
+grafanaEnvFromSecrets: []
+
 platformNodeSelector: {}
