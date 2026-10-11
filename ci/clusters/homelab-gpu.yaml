@@ -57,6 +57,8 @@ spec:
                         resources:
                         - name: nvidia.com/gpu
                           replicas: 3
+          observabilityExtraHelmValues:
+            alertmanagerConfigMatcherStrategy: OnNamespaceExceptForAlertmanagerNamespace
           storageProvisioners:
             - name: nas-iscsi
               type: democratic-csi

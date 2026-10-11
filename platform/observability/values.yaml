@@ -77,4 +77,16 @@ grafanaPlugins: []
 # by default -- most clusters have no tainted nodes.
 nodeExporterTolerations: []
 
+# Which alerts an AlertmanagerConfig route can see. Empty = the operator's
+# default, OnNamespace: a route only matches alerts whose `namespace` label
+# equals the AlertmanagerConfig's own namespace (right for a cluster shared by
+# teams). Many alerts have no `namespace` label (rules that aggregate it away,
+# scrapes of hosts outside the cluster), so a cluster that routes all alerts to
+# one receiver sets OnNamespaceExceptForAlertmanagerNamespace: an
+# AlertmanagerConfig in Alertmanager's own namespace (prometheus) then sees
+# every alert, and configs anywhere else stay limited to their namespace. None
+# lets every AlertmanagerConfig in the cluster see every alert; avoid it on
+# shared clusters. Receivers, chat ids and tokens stay in the consumer's repo.
+alertmanagerConfigMatcherStrategy: ""
+
 platformNodeSelector: {}
