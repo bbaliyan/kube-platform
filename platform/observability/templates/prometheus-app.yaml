@@ -250,6 +250,10 @@ spec:
           alertmanagerSpec:
             priorityClassName: platform
             {{- include "platform.nodeSelector" . | nindent 12 }}
+{{- if .Values.alertmanagerConfigMatcherStrategy }}
+            alertmanagerConfigMatcherStrategy:
+              type: {{ .Values.alertmanagerConfigMatcherStrategy | quote }}
+{{- end }}
             storage:
               volumeClaimTemplate:
                 spec:
