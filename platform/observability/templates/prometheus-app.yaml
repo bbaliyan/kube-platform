@@ -88,7 +88,7 @@ spec:
               memory: 192Mi
             limits:
               memory: 1Gi
-{{- $ini := mustMergeOverwrite (dict "server" (dict "root_url" "%(protocol)s://%(domain)s/" "serve_from_sub_path" false)) (deepCopy .Values.grafanaIni) }}
+{{- $ini := mustMergeOverwrite (dict "server" (dict "root_url" "%(protocol)s://%(domain)s/" "serve_from_sub_path" false)) (deepCopy (.Values.grafanaIni | default dict)) }}
           grafana.ini:
 {{ toYaml $ini | indent 12 }}
 {{- if .Values.grafanaEnvFromSecrets }}
