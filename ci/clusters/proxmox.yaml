@@ -49,6 +49,18 @@ spec:
             value: "true"
         valuesObject:
           extraTags: {}
+          argocdExtraConfigs:
+            cm:
+              url: https://argocd.example.com
+              oidc.config: |
+                name: SSO
+                issuer: https://idp.example.com
+                clientID: argocd
+                clientSecret: $argocd-oidc:clientSecret
+            rbac:
+              scopes: "[email]"
+              policy.csv: |
+                g, admin@example.com, role:admin
           traefikExtraConfig:
             ports:
               postgres:
