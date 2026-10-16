@@ -105,7 +105,7 @@ democratic-csi:
       image:
         registry: docker.io/busybox
         # renovate: datasource=docker depName=docker.io/busybox
-        tag: 1.37.0
+        tag: 1.38.0
       resources:
         requests: {cpu: 10m, memory: 32Mi}
         limits: {cpu: 100m, memory: 128Mi}
