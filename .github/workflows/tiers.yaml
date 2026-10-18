@@ -28,6 +28,37 @@ jobs:
           persist-credentials: false
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: make test-commit BASE_REF=${{ github.event.pull_request.base.sha || github.event.before }}
+      # After the tier, so a PR that fails it still shows what it changes.
+      - run: make diff-comment BASE_REF=${{ github.event.pull_request.base.sha }}
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: rendered-manifests
+          path: out/
+          if-no-files-found: ignore
+
+  comment:
+    needs: commit
+    # A fork's PR gets a read-only token, so it reads the diff in the commit
+    # job's summary instead.
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: rendered-manifests
+          path: out/
+      - run: ci/post-comment.sh ${{ github.event.pull_request.number }} out/comment.md
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   integration:
     needs: commit
