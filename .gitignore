@@ -8,3 +8,5 @@
 platform/**/charts/
 platform/**/Chart.lock
 __pycache__/
+out/
+kind-logs/
