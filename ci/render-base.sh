@@ -5,7 +5,7 @@
 # Usage: ci/render-base.sh <base-commit>
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 base="${1:-}"
 tree="$(mktemp -d)"
 trap 'git worktree remove --force "$tree" >/dev/null 2>&1; rm -rf "$tree"' EXIT
