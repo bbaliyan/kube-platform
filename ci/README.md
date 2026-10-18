@@ -18,6 +18,21 @@ They stay until the ruleset requires the new `commit` and `integration`
 checks. `.pipelinelintignore` lists that file, so remove the line when the
 old jobs go.
 
+## Image pulls in the integration tier
+
+A public registry can refuse anonymous pulls from a shared runner address. To keep
+the run steady, `ci/e2e/preload-images.sh` gives the kind node its images:
+
+1. If an image is in the cache, it loads from there.
+2. Otherwise it pulls the image, with up to 5 tries.
+3. If a Docker Official Image from the AWS public registry is still refused, it
+   pulls the same image from Docker Hub, then from `mirror.gcr.io`, and tags it
+   with the original name. The log shows `FALLBACK`.
+4. If every source fails, the run stops and names the image.
+
+The workflow keeps the cache between runs. `tests/preload-images.sh` tests this
+logic with stand-in `docker` and `kind` commands.
+
 Clusters sync this repo's `main` as soon as it moves, so every PR is checked
 against example clusters before it merges (`.github/workflows/ci.yaml`):
 

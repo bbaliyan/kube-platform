@@ -31,18 +31,6 @@ report_state() {
   "$kind_bin" export logs kind-logs >/dev/null || true
 }
 
-# The cluster's own pulls give up after one rate-limited answer for minutes, so
-# the runner pulls with retries and hands the image to the node.
-preload_images() {
-  local image attempt
-  grep -oE 'image: *"?[^" ]+' | sed -E 's/image: *"?//' | sort -u | while read -r image; do
-    for attempt in 1 2 3 4 5; do
-      docker pull -q "$image" >/dev/null && "$kind_bin" load docker-image "$image" >/dev/null && break
-      [ "$attempt" -lt 5 ] && sleep $((attempt * 15))
-    done
-  done
-}
-
 cleanup() {
   status=$?
   [ "$status" -eq 0 ] || report_state
@@ -85,7 +73,9 @@ kubectl create namespace argocd
 helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm \
     --version "$(version argocdVersion)" \
     --namespace argocd --include-crds -f ci/e2e/genesis-argocd.yaml > "$tmp/argocd.yaml"
-preload_images < "$tmp/argocd.yaml"
+# The runner hands the images to the node, so a rate-limited registry cannot
+# fail the run. See ci/e2e/preload-images.sh.
+KIND="$kind_bin" ci/e2e/preload-images.sh < "$tmp/argocd.yaml"
 kubectl apply --server-side -n argocd -f "$tmp/argocd.yaml" >/dev/null
 kubectl -n argocd rollout status deployment,statefulset --timeout=5m
 
