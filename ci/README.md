@@ -1,5 +1,23 @@
 # CI
 
+## Entry points
+
+Run these inside the kube-devenv image (`make test-integration` also needs
+docker, kind, helm, kubectl and pyyaml).
+
+- `make test-commit`: lint, secret scan, pipeline lint, render, schema check
+  and commit-message check. No secrets, nothing privileged.
+- `make test-integration`: the kind end-to-end run described below.
+- `make hooks`: runs the fast subset (`make test-fast`) before each commit.
+
+`.github/workflows/tiers.yaml` only sets up and calls these. It runs the
+integration tier for PRs from this repo, not for fork PRs.
+
+`.github/workflows/ci.yaml` still has the older `render` and `e2e` jobs.
+They stay until the ruleset requires the new `commit` and `integration`
+checks. `.pipelinelintignore` lists that file, so remove the line when the
+old jobs go.
+
 Clusters sync this repo's `main` as soon as it moves, so every PR is checked
 against example clusters before it merges (`.github/workflows/ci.yaml`):
 

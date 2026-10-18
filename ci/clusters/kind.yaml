@@ -30,6 +30,10 @@ spec:
             value: kind.test
           - name: trustedCaPemB64
             value: ""
+          # CAPMOX v0.9 documents Cluster API v1.11 and v1.12 only, and
+          # platform-versions pins v1.14, so the autoscaler stays off here.
+          - name: clusterAutoscalerEnabled
+            value: "false"
         valuesObject:
           ciliumOperatorReplicas: 1
           hubbleEnabled: true
