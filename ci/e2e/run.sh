@@ -84,7 +84,7 @@ kubectl delete namespace local-path-storage --wait=false
 kubectl create namespace argocd
 helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm \
     --version "$(version argocdVersion)" \
-    --namespace argocd --include-crds -f ci/e2e/genesis-argocd.yaml \ > "$tmp/argocd.yaml"
+    --namespace argocd --include-crds -f ci/e2e/genesis-argocd.yaml > "$tmp/argocd.yaml"
 preload_images < "$tmp/argocd.yaml"
 kubectl apply --server-side -n argocd -f "$tmp/argocd.yaml" >/dev/null
 kubectl -n argocd rollout status deployment,statefulset --timeout=5m
