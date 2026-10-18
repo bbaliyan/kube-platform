@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Fast subset of make test-commit: script lint, yamllint, secret scan.
+# Enable with: make hooks
+set -euo pipefail
+exec make test-fast
