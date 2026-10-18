@@ -13,13 +13,19 @@ docker, kind, helm, kubectl and pyyaml).
 `.github/workflows/tiers.yaml` only sets up and calls these. It runs the
 integration tier for PRs from this repo, not for fork PRs.
 
-`.github/workflows/ci.yaml` still has the older `render` and `e2e` jobs.
-They stay until the ruleset requires the new `commit` and `integration`
-checks. `.pipelinelintignore` lists that file, so remove the line when the
-old jobs go.
+The `commit` and `integration` jobs gate a merge. Two more things run beside
+them, and neither gates:
+
+- `make diff-comment` renders `main` and the branch, and writes the rendered
+  diff to `out/comment.md` and to the job summary. It is not part of
+  `make test-commit`.
+- The `comment` job posts that file as a PR comment. It is the only job with
+  `pull-requests: write`. For a fork PR, read the diff in the job summary.
+
+Both jobs upload `out/` as the `rendered-manifests` artifact.
 
 Clusters sync this repo's `main` as soon as it moves, so every PR is checked
-against example clusters before it merges (`.github/workflows/ci.yaml`):
+against example clusters before it merges:
 
 1. `render.py` renders the platform for each example cluster in `clusters/`
    the way Argo CD would: the root `platform` Application, then every
@@ -29,9 +35,10 @@ against example clusters before it merges (`.github/workflows/ci.yaml`):
    schemas, and custom resources against the CRDs the same charts ship.
    CustomResourceDefinitions themselves, and ClusterSecretStore (whose schema
    kubeconform cannot compile), are not checked.
-3. `diff_comment.py` posts what changes against `main`, per cluster, as a PR
-   comment. The full render is the workflow's `rendered-manifests` artifact.
-4. The `e2e` job deploys it for real: a kind cluster, Cilium and Argo CD
+3. `make diff-comment` shows what changes against `main`, per cluster, as a
+   PR comment (`diff_comment.py`, `render-base.sh`, `post-comment.sh`). The
+   full render is the workflow's `rendered-manifests` artifact.
+4. `make test-integration` deploys it for real: a kind cluster, Cilium and Argo CD
    installed the way a node's genesis installs them (at `main`'s versions,
    so a bump is tested as an upgrade), then the `kind.yaml` example cluster
    pointed at the commit under test. It passes once every Application is
@@ -62,7 +69,7 @@ consumer writes it. Between them they switch on every optional template:
 | `aws.yaml` | kube-compute's `aws-cluster`: EBS, cluster-autoscaler + cloud controller manager, SSM secrets, BYO CA, external-dns, trusted internal CA |
 | `proxmox.yaml` | kube-compute's `proxmox-cluster`: Vault/OpenBao secrets and BYO CA, Cluster API autoscaling, local-path + Longhorn, extra Traefik port, Grafana plugins |
 | `azure-acme.yaml` | ACME certificates, Azure Key Vault secrets, Hubble off, no storage |
-| `kind.yaml` | what the e2e job deploys: self-signed certificates, Hubble, local-path |
+| `kind.yaml` | what `make test-integration` deploys: self-signed certificates, Hubble, local-path |
 
 When a consumer turns on something none of these do, add it to the closest
 one (or add a file).

@@ -1,6 +1,9 @@
 # Every check lives here. The CI workflow only sets up the environment and
 # calls a target, so a run on a laptop matches a run on GitHub.
 #
+# diff-comment is not part of test-commit: it compares against BASE_REF and
+# only feeds a PR comment. It writes out/comment.md.
+#
 # test-commit runs inside the kube-devenv image. test-integration also needs
 # docker, kind, helm, kubectl, curl and python3 with pyyaml on PATH.
 #   BASE_REF      commit the branch started from; empty skips commit-messages
@@ -16,7 +19,7 @@ BASE_REF ?= $(shell git rev-parse --verify --quiet origin/main)
 export REQUIRE_SIGNOFF := 0
 
 .PHONY: test-commit test-fast test-integration hooks lint-scripts lint-yaml \
-	lint-pipelines lint-renovate render schemas secrets commit-messages
+	lint-pipelines lint-renovate render schemas secrets commit-messages diff-comment
 
 test-commit: test-fast lint-pipelines lint-renovate render schemas commit-messages
 
@@ -50,6 +53,11 @@ secrets:
 
 commit-messages:
 	$(CHECKS)/commit-messages.sh "$(BASE_REF)"
+
+diff-comment: render
+	ci/render-base.sh "$(BASE_REF)"
+	python3 ci/diff_comment.py out/base out/head out/comment.md
+	if [ -n "$${GITHUB_STEP_SUMMARY:-}" ]; then cat out/comment.md >> "$$GITHUB_STEP_SUMMARY"; fi
 
 test-integration:
 	ci/e2e/run.sh
