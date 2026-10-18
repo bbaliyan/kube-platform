@@ -76,7 +76,9 @@ helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm \
 # The runner hands the images to the node, so a rate-limited registry cannot
 # fail the run. Argo CD then takes itself over at this commit's chart version,
 # so that version's images are loaded too. See ci/e2e/preload-images.sh.
-helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm     --version "$(pinned platform/platform-versions/values.yaml argocdVersion)"     --namespace argocd -f ci/e2e/genesis-argocd.yaml > "$tmp/argocd-head.yaml"
+helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm \
+    --version "$(pinned platform/platform-versions/values.yaml argocdVersion)" \
+    --namespace argocd -f ci/e2e/genesis-argocd.yaml > "$tmp/argocd-head.yaml"
 cat "$tmp/argocd.yaml" "$tmp/argocd-head.yaml" | KIND="$kind_bin" ci/e2e/preload-images.sh
 kubectl apply --server-side -n argocd -f "$tmp/argocd.yaml" >/dev/null
 kubectl -n argocd rollout status deployment,statefulset --timeout=5m
