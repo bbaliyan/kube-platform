@@ -8,7 +8,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 base="${1:-}"
 tree="$(mktemp -d)"
-trap 'git worktree remove --force "$tree" >/dev/null 2>&1; rm -rf "$tree"' EXIT
+trap 'git worktree remove --force "$tree/src" >/dev/null 2>&1; rm -rf "$tree"' EXIT
 
 if [ -z "$base" ] || [[ "$base" =~ ^0+$ ]]; then
   echo "render-base: no base commit, skipping."
