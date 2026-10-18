@@ -16,9 +16,9 @@ BASE_REF ?= $(shell git rev-parse --verify --quiet origin/main)
 export REQUIRE_SIGNOFF := 0
 
 .PHONY: test-commit test-fast test-integration hooks lint-scripts lint-yaml \
-	lint-pipelines lint-renovate render schemas secrets commit-messages
+	lint-pipelines lint-renovate test-scripts render schemas secrets commit-messages
 
-test-commit: test-fast lint-pipelines lint-renovate render schemas commit-messages
+test-commit: test-fast lint-pipelines lint-renovate test-scripts render schemas commit-messages
 
 test-fast: lint-scripts lint-yaml secrets
 
@@ -26,14 +26,17 @@ hooks:
 	git config core.hooksPath .githooks
 
 lint-scripts:
-	bash -n ci/*.sh ci/e2e/*.sh .githooks/pre-commit
-	shellcheck -S warning ci/*.sh ci/e2e/*.sh .githooks/pre-commit
+	bash -n ci/*.sh ci/e2e/*.sh tests/*.sh .githooks/pre-commit
+	shellcheck -S warning ci/*.sh ci/e2e/*.sh tests/*.sh .githooks/pre-commit
 
 lint-yaml:
 	yamllint -d '{extends: relaxed, rules: {line-length: disable}}' ci/clusters ci/e2e bootstrap/values.yaml platform/platform-versions/values.yaml
 
 lint-pipelines:
 	$(CHECKS)/pipeline-lint.sh .
+
+test-scripts:
+	tests/preload-images.sh
 
 lint-renovate:
 	python3 -c "import json; json.load(open('renovate.json'))"
