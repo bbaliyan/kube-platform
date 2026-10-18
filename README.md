@@ -1,6 +1,6 @@
 # kube-platform
 
-[![CI](https://github.com/bbaliyan/kube-platform/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/bbaliyan/kube-platform/actions/workflows/ci.yaml?query=branch%3Amain)
+[![CI](https://github.com/bbaliyan/kube-platform/actions/workflows/tiers.yaml/badge.svg?branch=main)](https://github.com/bbaliyan/kube-platform/actions/workflows/tiers.yaml?query=branch%3Amain)
 
 Turns a bare RKE2 cluster into one you can run real applications on. Point
 Argo CD at it and it installs, and keeps in sync, everything an app expects
@@ -65,8 +65,8 @@ PRs; merging one upgrades every cluster.
 
 For RKE2 itself, after merging, run `argocd app sync system-upgrade-plans`
 on each cluster when you want it upgraded. A new RKE2 minor also needs the
-kind node image (`KIND_NODE_VERSION` in `.github/workflows/ci.yaml`) on the
-same minor, or e2e fails.
+kind node image (`kindNodeVersion` in `ci/e2e/versions.yaml`) on the
+same minor, or `make test-integration` fails.
 
 ## CI
 
