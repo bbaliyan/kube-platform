@@ -11,57 +11,72 @@ cat >"$work/bin/docker" <<'EOF'
 #!/usr/bin/env bash
 echo "docker $*" >>"$LOG"
 case "$1" in
-  pull) image="${*: -1}"; ! grep -qxF "$image" "$FAIL_PULL" ;;
-  save) : >"$3" ;;
-  *) ;;
+  pull) ! grep -qxF "${*: -1}" "$FAIL_PULL" ;;
+  tag) echo "$3" >>"$HAVE" ;;
+  image) grep -qxF "$3" "$HAVE" ;;
 esac
 EOF
 cat >"$work/bin/kind" <<'EOF'
 #!/usr/bin/env bash
 echo "kind $*" >>"$LOG"
+[ -z "${FAIL_KIND:-}" ]
 EOF
 chmod +x "$work/bin/docker" "$work/bin/kind"
 
 export PATH="$work/bin:$PATH" KIND="$work/bin/kind" PRELOAD_PAUSE=0
-export LOG="$work/log" FAIL_PULL="$work/fail"
+export LOG="$work/log" FAIL_PULL="$work/fail" HAVE="$work/have"
 ecr='ecr-public.aws.com/docker/library/redis:8.6.4-alpine'
 hub='docker.io/library/redis:8.6.4-alpine'
-manifest="        image: \"$ecr\""
+gcr='mirror.gcr.io/library/redis:8.6.4-alpine'
+other='quay.io/argoproj/argocd:v3.5.4'
 
-run() { : >"$LOG"; "$script" <<<"$manifest" 2>&1; }
-fail() { echo "FAIL $1"; cat "$LOG"; exit 1; }
+reset() { : >"$LOG"; : >"$HAVE"; printf '%s\n' "$@" >"$FAIL_PULL"; unset FAIL_KIND; }
+run() { "$script" <<<"        image: \"$1\"" 2>&1; }
+expect_fail() { echo "FAIL $1"; cat "$LOG"; exit 1; }
 ok() { echo "ok   $1"; }
 
-: >"$FAIL_PULL"
-out="$(run)"
-grep -qxF "kind load docker-image $ecr" "$LOG" || fail "pulled image is loaded into kind"
-grep -q 'pulled' <<<"$out" || fail "pulled image is reported"
+reset
+out="$(run "$ecr")"
+grep -qxF "kind load docker-image $ecr" "$LOG" || expect_fail "pulled image is loaded into kind"
+grep -q 'pulled' <<<"$out" || expect_fail "pulled image is reported"
 ok "pulled image is loaded into kind"
 
-echo "$ecr" >"$FAIL_PULL"
-out="$(run)"
-grep -qxF "docker tag $hub $ecr" "$LOG" || fail "fallback image is tagged as the original"
-grep -qxF "kind load docker-image $ecr" "$LOG" || fail "fallback image is loaded under the original name"
-grep -q 'FALLBACK' <<<"$out" || fail "fallback is reported"
-ok "rate-limited image falls back to Docker Hub and keeps its name"
+reset "$ecr"
+out="$(run "$ecr")"
+grep -qxF "docker tag $hub $ecr" "$LOG" || expect_fail "fallback image is tagged as the original"
+grep -qxF "kind load docker-image $ecr" "$LOG" || expect_fail "fallback image is loaded under the original name"
+grep -q 'FALLBACK' <<<"$out" || expect_fail "fallback is reported"
+ok "refused image falls back to Docker Hub and keeps its name"
 
-printf '%s\n' "$ecr" "$hub" "mirror.gcr.io/library/redis:8.6.4-alpine" >"$FAIL_PULL"
+reset "$ecr" "$hub"
+run "$ecr" >/dev/null
+grep -qxF "docker tag $gcr $ecr" "$LOG" || expect_fail "second mirror is used"
+ok "second mirror is used when Docker Hub is also refused"
+
+reset "$ecr" "$hub" "$gcr"
 status=0
-out="$(run)" || status=$?
-[ "$status" -ne 0 ] || fail "exit is non-zero when every source fails"
-grep -q "could not pull $ecr" <<<"$out" || fail "failure names the image"
+out="$(run "$ecr")" || status=$?
+[ "$status" -ne 0 ] || expect_fail "exit is non-zero when every source fails"
+grep -q "could not pull $ecr" <<<"$out" || expect_fail "failure names the image"
 ok "every source failing stops with the image name"
 
-: >"$FAIL_PULL"
-cache="$work/cache"
-export IMAGE_CACHE_DIR="$cache"
-out="$(run)"
-[ -n "$(ls "$cache")" ] || fail "pulled image is saved to the cache"
-ok "pulled image is saved to the cache"
+reset "$other"
+status=0
+out="$(run "$other")" || status=$?
+[ "$status" -ne 0 ] || expect_fail "image without alternatives fails when refused"
+grep -q "could not pull $other" <<<"$out" || expect_fail "failure names the image"
+ok "an image with no alternatives fails when refused"
 
-echo "$ecr" >"$FAIL_PULL"
-out="$(run)"
-grep -q '^docker pull' "$LOG" && fail "cache hit does not pull"
-grep -q '^docker load' "$LOG" || fail "cache hit loads the saved image"
-grep -q 'cache' <<<"$out" || fail "cache hit is reported"
-ok "cache hit loads without pulling"
+reset
+export FAIL_KIND=1
+status=0
+out="$(run "$ecr")" || status=$?
+[ "$status" -ne 0 ] || expect_fail "exit is non-zero when kind cannot load the image"
+grep -q "kind could not load $ecr" <<<"$out" || expect_fail "load failure names the image"
+ok "a failed load into kind stops with the image name"
+
+reset
+status=0
+out="$("$script" <<<"no images here" 2>&1)" || status=$?
+[ "$status" -ne 0 ] || expect_fail "exit is non-zero for an empty image list"
+ok "an empty image list fails"

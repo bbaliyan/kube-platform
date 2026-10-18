@@ -3,18 +3,15 @@
 # node, so the node never pulls from a registry itself. A registry that rate
 # limits an anonymous runner would otherwise fail the run.
 #
-# Needs KIND (the kind binary). Optional:
-#   IMAGE_CACHE_DIR  directory of saved images, kept between runs
-#   PRELOAD_PAUSE    seconds to wait after the first failed pull; doubles as a
-#                    multiplier on later tries (default 15, 0 in tests)
+# Needs KIND (the kind binary). PRELOAD_PAUSE is the base wait in seconds: try
+# N waits N times this after it fails (default 15, 0 in tests).
 set -euo pipefail
 
 : "${KIND:?set KIND to the kind binary}"
 pause="${PRELOAD_PAUSE:-15}"
-cache="${IMAGE_CACHE_DIR:-}"
-[ -z "$cache" ] || mkdir -p "$cache"
 
-# Docker Official Images are the same images on every registry that mirrors them.
+# Docker Official Images are the same image, with the same digest, on every
+# registry that mirrors them.
 alternatives() {
   case "$1" in
     ecr-public.aws.com/docker/library/*)
@@ -33,40 +30,35 @@ pull_with_retries() {
 }
 
 preload() {
-  local image="$1" file="" alternative got=0
-  [ -z "$cache" ] || file="$cache/$(printf '%s' "$image" | sha256sum | cut -d' ' -f1).tar"
-
-  if [ -n "$file" ] && [ -f "$file" ] && docker load -i "$file" >/dev/null; then
-    "$KIND" load docker-image "$image" >/dev/null
-    echo "preload: $image from cache"
-    return 0
-  fi
-
+  local image="$1" alternative
   if pull_with_retries "$image" 5; then
-    got=1
     echo "preload: $image pulled"
   else
     while read -r alternative; do
-      [ -n "$alternative" ] || continue
-      if pull_with_retries "$alternative" 3; then
-        docker tag "$alternative" "$image"
-        got=1
-        echo "preload: $image FALLBACK pulled as $alternative"
-        break
-      fi
+      pull_with_retries "$alternative" 3 || continue
+      docker tag "$alternative" "$image" || return 1
+      echo "preload: $image FALLBACK pulled as $alternative"
+      break
     done < <(alternatives "$image")
+    docker image inspect "$image" >/dev/null 2>&1 || {
+      echo "preload: could not pull $image or any alternative"
+      return 1
+    }
   fi
-  [ "$got" -eq 1 ] || {
-    echo "preload: could not pull $image or any alternative"
+  "$KIND" load docker-image "$image" >/dev/null || {
+    echo "preload: kind could not load $image"
     return 1
   }
+}
 
-  [ -z "$file" ] || docker save -o "$file" "$image"
-  "$KIND" load docker-image "$image" >/dev/null
+images="$(grep -oE 'image: *"?[^" ]+' | sed -E 's/image: *"?//' | sort -u)"
+[ -n "$images" ] || {
+  echo "preload: no images in the manifests"
+  exit 1
 }
 
 status=0
 while read -r image; do
   preload "$image" || status=1
-done < <(grep -oE 'image: *"?[^" ]+' | sed -E 's/image: *"?//' | sort -u)
+done <<<"$images"
 exit "$status"
