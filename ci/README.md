@@ -24,6 +24,25 @@ them, and neither gates:
 
 Both jobs upload `out/` as the `rendered-manifests` artifact.
 
+## Image pulls in the integration tier
+
+A public registry can refuse anonymous pulls from a shared runner address. To keep
+the run steady, `ci/e2e/preload-images.sh` gives the kind node the Argo CD images,
+for the version the cluster starts with and for the version at this commit:
+
+1. It pulls each image, with up to 5 tries.
+2. If a Docker Official Image from the AWS public registry is still refused, it
+   pulls the same image from Docker Hub, then from `mirror.gcr.io`, and tags it
+   with the original name. The digest is the same on all three. The log shows
+   `FALLBACK`.
+3. If every source fails, the run stops and names the image.
+
+Images that Argo CD installs later, and Cilium's images, are not loaded this way.
+They have pulled without trouble so far.
+
+`tests/preload-images.sh` tests this logic with stand-in `docker` and `kind`
+commands.
+
 Clusters sync this repo's `main` as soon as it moves, so every PR is checked
 against example clusters before it merges:
 
