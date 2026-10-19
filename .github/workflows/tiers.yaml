@@ -52,7 +52,7 @@ jobs:
 
   comment:
     needs: diff
-    # A fork's PR gets a read-only token, so it reads the diff in the commit
+    # A fork's PR gets a read-only token, so it reads the diff in the diff
     # job's summary instead.
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest

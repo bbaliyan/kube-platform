@@ -14,15 +14,15 @@ docker, kind, helm, kubectl and pyyaml).
 integration tier for PRs from this repo, not for fork PRs.
 
 The `commit` and `integration` jobs gate a merge. They run at the same time,
-so a PR waits for the slower one, not for both. Two more jobs run beside them,
-and neither gates:
+so a PR waits for the slower one, not for both. The `diff` job runs beside
+them, and `comment` runs after it. Neither gates:
 
 - The `diff` job runs `make diff-comment`. It renders `main` and the branch, and
   writes the rendered diff to `out/comment.md` and to the job summary. It is not
   part of `make test-commit`. It uploads `out/` as the `rendered-manifests`
   artifact.
 - The `comment` job posts that file as a PR comment. It is the only job with
-  `pull-requests: write`. For a fork PR, read the diff in the job summary.
+  `pull-requests: write`. For a fork PR, read the diff in the `diff` job's summary.
 
 A job rename changes the required check names. Update the ruleset in the same
 change.
