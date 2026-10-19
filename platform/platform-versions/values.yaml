@@ -21,10 +21,10 @@
 k8sVersion: v1.37.1+rke2r1
 
 # renovate: datasource=helm depName=argo-cd registryUrl=https://argoproj.github.io/argo-helm
-argocdVersion: 10.10.3
+argocdVersion: 10.10.5
 
 # renovate: datasource=helm depName=cilium registryUrl=https://helm.cilium.io/
-ciliumVersion: 1.20.2
+ciliumVersion: 1.20.3
 
 # renovate: datasource=github-releases depName=kubernetes-sigs/cluster-api
 capiCoreVersion: "v1.14.3"
