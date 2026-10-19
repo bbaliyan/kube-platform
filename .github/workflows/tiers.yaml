@@ -28,9 +28,21 @@ jobs:
           persist-credentials: false
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: make test-commit BASE_REF=${{ github.event.pull_request.base.sha || github.event.before }}
-      # After the tier, so a PR that fails it still shows what it changes.
+
+  # Not a required check, and it runs beside commit, so a slow or failing diff
+  # never blocks a merge and never delays the tiers.
+  diff:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: ghcr.io/bbaliyan/kube-devenv:0.11.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: make diff-comment BASE_REF=${{ github.event.pull_request.base.sha }}
-        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
@@ -39,8 +51,8 @@ jobs:
           if-no-files-found: ignore
 
   comment:
-    needs: commit
-    # A fork's PR gets a read-only token, so it reads the diff in the commit
+    needs: diff
+    # A fork's PR gets a read-only token, so it reads the diff in the diff
     # job's summary instead.
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
@@ -61,7 +73,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
   integration:
-    needs: commit
     # Fork PRs get the commit tier only.
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
