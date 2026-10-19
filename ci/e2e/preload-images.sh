@@ -29,6 +29,20 @@ pull_with_retries() {
   return 1
 }
 
+# On a Docker with the containerd image store, a pulled image keeps its full
+# multi-platform index but only this platform's blobs. A plain `kind load
+# docker-image` saves the whole index, and `ctr import --all-platforms` then
+# fails on the missing blobs. Saving one platform avoids that.
+load_into_kind() {
+  local image="$1" platform archive status=0
+  platform="linux/$(docker version --format '{{.Server.Arch}}')"
+  archive="$(mktemp)"
+  docker save --platform "$platform" -o "$archive" "$image" &&
+    "$KIND" load image-archive "$archive" >/dev/null || status=1
+  rm -f "$archive"
+  return "$status"
+}
+
 preload() {
   local image="$1" alternative
   if pull_with_retries "$image" 5; then
@@ -45,7 +59,7 @@ preload() {
       return 1
     }
   fi
-  "$KIND" load docker-image "$image" >/dev/null || {
+  load_into_kind "$image" || {
     echo "preload: kind could not load $image"
     return 1
   }

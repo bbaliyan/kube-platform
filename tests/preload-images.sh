@@ -14,6 +14,8 @@ case "$1" in
   pull) ! grep -qxF "${*: -1}" "$FAIL_PULL" ;;
   tag) echo "$3" >>"$HAVE" ;;
   image) grep -qxF "$3" "$HAVE" ;;
+  version) echo amd64 ;;
+  save) [ "$2" = --platform ] && : >"$5" ;;
 esac
 EOF
 cat >"$work/bin/kind" <<'EOF'
@@ -37,14 +39,15 @@ ok() { echo "ok   $1"; }
 
 reset
 out="$(run "$ecr")"
-grep -qxF "kind load docker-image $ecr" "$LOG" || expect_fail "pulled image is loaded into kind"
+grep -qE "^docker save --platform linux/amd64 -o [^ ]+ $ecr\$" "$LOG" || expect_fail "one platform is saved"
+grep -qE "^kind load image-archive [^ ]+\$" "$LOG" || expect_fail "pulled image is loaded into kind"
 grep -q 'pulled' <<<"$out" || expect_fail "pulled image is reported"
-ok "pulled image is loaded into kind"
+ok "pulled image is saved for one platform and loaded into kind"
 
 reset "$ecr"
 out="$(run "$ecr")"
 grep -qxF "docker tag $hub $ecr" "$LOG" || expect_fail "fallback image is tagged as the original"
-grep -qxF "kind load docker-image $ecr" "$LOG" || expect_fail "fallback image is loaded under the original name"
+grep -qE "^docker save --platform linux/amd64 -o [^ ]+ $ecr\$" "$LOG" || expect_fail "fallback image is loaded under the original name"
 grep -q 'FALLBACK' <<<"$out" || expect_fail "fallback is reported"
 ok "refused image falls back to Docker Hub and keeps its name"
 
