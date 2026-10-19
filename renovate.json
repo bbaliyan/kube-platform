@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Argo CD syncs this repo's main branch straight into live clusters, so nothing automerges here.",
+  "description": "Argo CD syncs this repo's main branch into live clusters, and the required checks gate every merge. Leaf apps (Headlamp, kube-prometheus-stack, Loki, Alloy, GPU exporter, helper images) automerge patch and minor updates once checks pass. Cluster-wide components (Argo CD, Cilium, cert-manager, external-secrets, external-dns, GPU operator, storage drivers, cloud controllers, autoscaler, Cluster API, Traefik, RKE2 and the kind node) are merged by hand, because a bad update can break networking, storage or Argo CD itself. Major updates are reviewed by hand.",
   "extends": [
     "local>bbaliyan/renovate-config"
   ],
@@ -41,9 +41,24 @@
       "groupName": "kind"
     },
     {
-      "description": "Every platform upgrade is merged by hand.",
+      "description": "Cluster-wide components: a bad update can take down networking, storage or Argo CD, so a person merges each one.",
       "matchPackageNames": [
-        "*"
+        "argo-cd",
+        "cilium",
+        "/^cert-manager/",
+        "trust-manager",
+        "external-secrets",
+        "external-dns",
+        "gpu-operator",
+        "rancher/rke2",
+        "/democratic-csi/",
+        "/^registry\\.k8s\\.io\\/sig-storage\\/csi-/",
+        "/cloud-controller-manager$/",
+        "cluster-autoscaler",
+        "/cluster-api/",
+        "traefik",
+        "kindest/node",
+        "kubernetes-sigs/kind"
       ],
       "automerge": false
     }
