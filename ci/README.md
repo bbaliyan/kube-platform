@@ -13,16 +13,19 @@ docker, kind, helm, kubectl and pyyaml).
 `.github/workflows/tiers.yaml` only sets up and calls these. It runs the
 integration tier for PRs from this repo, not for fork PRs.
 
-The `commit` and `integration` jobs gate a merge. Two more things run beside
-them, and neither gates:
+The `commit` and `integration` jobs gate a merge. They run at the same time,
+so a PR waits for the slower one, not for both. Two more jobs run beside them,
+and neither gates:
 
-- `make diff-comment` renders `main` and the branch, and writes the rendered
-  diff to `out/comment.md` and to the job summary. It is not part of
-  `make test-commit`.
+- The `diff` job runs `make diff-comment`. It renders `main` and the branch, and
+  writes the rendered diff to `out/comment.md` and to the job summary. It is not
+  part of `make test-commit`. It uploads `out/` as the `rendered-manifests`
+  artifact.
 - The `comment` job posts that file as a PR comment. It is the only job with
   `pull-requests: write`. For a fork PR, read the diff in the job summary.
 
-Both jobs upload `out/` as the `rendered-manifests` artifact.
+A job rename changes the required check names. Update the ruleset in the same
+change.
 
 ## Image pulls in the integration tier
 
