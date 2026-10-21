@@ -32,7 +32,7 @@ spec:
 {{- $configs := mustMergeOverwrite (dict "cm" (dict "timeout.reconciliation" "30s" "timeout.reconciliation.jitter" "10s") "params" (dict "server.insecure" "true")) (deepCopy (.Values.argocdExtraConfigs | default dict)) }}
         # configs.cm timeouts: how soon an Application whose comparison failed is
         # compared again. The default two minutes plus jitter was most of a new
-        # cluster's bring-up time. Keep equal to the genesis render in kube-image.
+        # cluster's bring-up time. Keep equal to the genesis render in kube-images.
         # server.insecure: TLS terminates upstream; Argo CD serves plain HTTP.
         configs:
 {{ toYaml $configs | indent 10 }}

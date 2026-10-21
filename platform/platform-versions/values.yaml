@@ -8,7 +8,7 @@
 #     Application, see kube-compute's node-bootstrap platform_app_yaml)
 #     cilium-app.yaml's/argocd-app.yaml's own targetRevision — template it
 #     from these values.
-#   - Node image builds: kube-image's packer/aws/build.sh fetches this file and bakes
+#   - Node image builds: kube-images' kube-node/packer/aws/build.sh fetches this file and bakes
 #     k8sVersion, ciliumVersion and argocdVersion into the image. A new node boots
 #     the versions of the image it was built from, so a bump reaches new nodes only
 #     with the next image build; until then the upgrade Plan brings them forward.

@@ -1,4 +1,4 @@
-# What a node's genesis install of Cilium sets (kube-image's
+# What a node's genesis install of Cilium sets (kube-images'
 # helm-values/cilium-values.yaml). Argo CD's cilium Application takes it
 # over from there; without Hubble, adopting it restarts nothing.
 kubeProxyReplacement: true

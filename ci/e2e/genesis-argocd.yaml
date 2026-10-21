@@ -1,4 +1,4 @@
-# What a node's genesis install of Argo CD sets (kube-image's
+# What a node's genesis install of Argo CD sets (kube-images'
 # helm-values/argocd-values.yaml): a running Argo CD, with no CPU limits
 # like the platform's. The argocd Application takes it over from there.
 configs:

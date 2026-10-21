@@ -57,7 +57,7 @@ spec:
           enabled: true
         defaultLBServiceIPAM: nodeipam
         # Requests only on the agent and Envoy: a memory limit would let the kernel
-        # kill a node's datapath. Keep equal to the genesis values in kube-image.
+        # kill a node's datapath. Keep equal to the genesis values in kube-images.
         resources:
           requests:
             cpu: 100m
