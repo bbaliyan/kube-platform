@@ -9,6 +9,8 @@ metadata:
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "0"
+    kube-stack/keep-resources-on-delete: owns the storage class that volumes depend on
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   project: default
   source:

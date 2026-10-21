@@ -12,6 +12,8 @@ metadata:
     # server-side dry-run apply against the live CRD schema, which does know the
     # field. See argoproj/argo-cd#20458.
     argocd.argoproj.io/compare-options: ServerSideDiff=true
+    kube-stack/keep-resources-on-delete: owns the metric data volume
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   project: default
   source:
