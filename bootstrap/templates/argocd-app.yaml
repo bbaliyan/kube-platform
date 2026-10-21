@@ -5,6 +5,8 @@ metadata:
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
+    kube-stack/keep-resources-on-delete: Argo CD manages its own install, so a cascade would remove the controller that runs the delete
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   project: default
   source:

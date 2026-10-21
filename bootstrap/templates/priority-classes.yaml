@@ -4,6 +4,7 @@ metadata:
   name: platform
   annotations:
     argocd.argoproj.io/sync-wave: "-2"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 value: 1000000
 description: Platform components. Preempts workloads when the node they share is full.
 ---
@@ -13,5 +14,6 @@ metadata:
   name: workload-critical
   annotations:
     argocd.argoproj.io/sync-wave: "-2"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 value: 100000
 description: Workloads that must not be preempted by ordinary workloads, such as databases.

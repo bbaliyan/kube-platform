@@ -19,9 +19,9 @@ BASE_REF ?= $(shell git rev-parse --verify --quiet origin/main)
 export REQUIRE_SIGNOFF := 0
 
 .PHONY: test-commit test-fast test-integration hooks lint-scripts lint-yaml \
-	lint-pipelines lint-renovate test-scripts render schemas secrets commit-messages diff-comment
+	lint-pipelines lint-renovate test-scripts render app-finalizers schemas secrets commit-messages diff-comment
 
-test-commit: test-fast lint-pipelines lint-renovate test-scripts render schemas commit-messages
+test-commit: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas commit-messages
 
 test-fast: lint-scripts lint-yaml secrets
 
@@ -40,6 +40,7 @@ lint-pipelines:
 
 test-scripts:
 	tests/preload-images.sh
+	tests/check-app-finalizers.sh
 
 lint-renovate:
 	python3 -c "import json; json.load(open('renovate.json'))"
@@ -47,6 +48,10 @@ lint-renovate:
 render:
 	rm -rf out
 	python3 ci/render.py . out/head
+
+# _root holds the cluster's own root Application, which a consumer owns.
+app-finalizers: render
+	find out/head -mindepth 2 -maxdepth 2 -type d ! -name _root -print0 | xargs -0 ci/check-app-finalizers.sh
 
 schemas: render
 	ci/validate-schemas.sh out/head

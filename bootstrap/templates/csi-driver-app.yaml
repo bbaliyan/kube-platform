@@ -8,6 +8,8 @@ metadata:
     # driver DaemonSet that mounts per-pod TLS certificates as CSI volumes — used
     # by ConfigAgent pods for SNI-based TLS passthrough.
     argocd.argoproj.io/sync-wave: "1"
+    kube-stack/keep-resources-on-delete: runs the CSI driver that mounted volumes depend on
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   project: default
   source:

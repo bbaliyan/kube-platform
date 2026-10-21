@@ -27,6 +27,37 @@ them, and `comment` runs after it. Neither gates:
 A job rename changes the required check names. Update the ruleset in the same
 change.
 
+## Application finalizers
+
+Every Application in `bootstrap/` and `platform/` must either carry the
+`resources-finalizer.argocd.argoproj.io` finalizer or opt out. `make test-commit`
+runs `ci/check-app-finalizers.sh` on the rendered output and fails if one does
+neither, or both.
+
+The finalizer makes Argo CD delete what an Application deployed when the
+Application is deleted or pruned. Without it, the Application object goes and
+its resources keep running, unowned.
+
+An Application opts out when its removal would break the cluster or lose data:
+the network, Argo CD, certificates and the CA, secrets, storage, ingress, DNS
+records, the node upgrade controller, the CRDs consumers add objects to, and
+the log and metric volumes. To opt out, set the annotation
+`kube-stack/keep-resources-on-delete` to the reason, and set
+`argocd.argoproj.io/sync-options: Prune=false,Delete=false`. Non-Application
+resources that a cascade must not remove carry the same sync options.
+
+An opt-out guards against `kubectl delete` and a prune. `argocd app delete` and
+the Argo CD UI add the finalizer themselves and cascade by default. Use
+`--cascade=false` with them on an opted-out Application.
+
+An opt-out also changes what happens when a consumer turns a feature off, for
+example `gpuOperatorEnabled`, a removed `storageProvisioners` entry, the cloud
+controller manager or the CSI driver. Before, the root pruned the Application
+and left its resources behind. Now the Application stays and keeps syncing, and
+the root shows it as "requires pruning" until someone deletes it by hand. Use
+`argocd app delete --cascade=false` if the resources must stay, or a cascading
+delete if they must go.
+
 ## Image pulls in the integration tier
 
 A public registry can refuse anonymous pulls from a shared runner address. To keep
