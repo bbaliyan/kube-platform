@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs scripts/check-app-finalizers.sh against small fixtures.
+# Runs ci/check-app-finalizers.sh against small fixtures.
 set -euo pipefail
 
 check="$(cd "$(dirname "$0")/.." && pwd)/ci/check-app-finalizers.sh"
