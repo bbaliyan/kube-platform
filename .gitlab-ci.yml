@@ -1,0 +1,39 @@
+# Setup only. Every check lives in the Makefile; make lint-pipelines fails
+# this file if it ever runs one.
+#
+# GitLab receives this repo from GitHub through a pull sync. This file runs the
+# commit tier there, on the general runner (tag `commit`). That runner has no
+# privileged mode, no Docker socket and no cache, so the file holds no secret.
+# The integration tier stays on GitHub.
+#
+# Keep the image tag the same as the one in .github/workflows/tiers.yaml.
+workflow:
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE =~ /^(push|web)$/'
+
+default:
+  image: ghcr.io/bbaliyan/kube-devenv:0.11.1
+  interruptible: true
+  cache: []
+
+variables:
+  # The secret scan and the commit message check read the history.
+  GIT_DEPTH: "0"
+
+commit:
+  stage: test
+  tags: [commit]
+  needs: []
+  timeout: 30 minutes
+  rules:
+    # A push to the default branch checks the commits the push added, as GitHub does.
+    # Other branches use the Makefile default, origin/main.
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      variables:
+        BASE_REF: $CI_COMMIT_BEFORE_SHA
+    - when: on_success
+  script:
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - make test-commit
