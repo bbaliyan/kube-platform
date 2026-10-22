@@ -37,6 +37,7 @@ lint-yaml:
 
 lint-pipelines:
 	$(CHECKS)/pipeline-lint.sh .
+	tests/check-gitlab-ci.sh
 
 test-scripts:
 	tests/preload-images.sh

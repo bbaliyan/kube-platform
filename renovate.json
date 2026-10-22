@@ -9,7 +9,8 @@
     "helm-values",
     "helmv3",
     "kubernetes",
-    "github-actions"
+    "github-actions",
+    "gitlabci"
   ],
   "kubernetes": {
     "description": "Plain, non-templated manifests carrying a container image. Scoped deliberately: everything else under platform/ is a Helm template, which this manager cannot parse.",
