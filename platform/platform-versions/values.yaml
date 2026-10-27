@@ -45,4 +45,4 @@ awsCloudControllerManagerImageTag: "v1.37.0"
 gpuOperatorVersion: "v26.7.2"
 
 # renovate: datasource=helm depName=nvidia-gpu-exporter registryUrl=https://utkuozdemir.github.io/nvidia_gpu_exporter
-nvidiaGpuExporterVersion: "2.15.1"
+nvidiaGpuExporterVersion: "2.16.0"
