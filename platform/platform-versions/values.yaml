@@ -33,7 +33,7 @@ capiCoreVersion: "v1.14.3"
 capmoxVersion: "v0.9.1"
 
 # renovate: datasource=helm depName=cluster-autoscaler registryUrl=https://kubernetes.github.io/autoscaler
-clusterAutoscalerVersion: "9.59.0"
+clusterAutoscalerVersion: "9.60.0"
 
 # renovate: datasource=helm depName=aws-cloud-controller-manager registryUrl=https://kubernetes.github.io/cloud-provider-aws
 awsCloudControllerManagerVersion: "0.0.12"
