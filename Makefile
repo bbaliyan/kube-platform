@@ -19,9 +19,9 @@ BASE_REF ?= $(shell git rev-parse --verify --quiet origin/main)
 export REQUIRE_SIGNOFF := 0
 
 .PHONY: test-commit test-fast test-integration hooks lint-scripts lint-yaml \
-	lint-pipelines lint-renovate test-scripts render app-finalizers schemas secrets commit-messages diff-comment
+	lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics secrets commit-messages diff-comment
 
-test-commit: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas commit-messages
+test-commit: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics commit-messages
 
 test-fast: lint-scripts lint-yaml secrets
 
@@ -57,6 +57,10 @@ app-finalizers: render
 
 schemas: render
 	ci/validate-schemas.sh out/head
+
+# Renders once more, with the preset on, and compares its regexes with the used metric names.
+dropped-metrics: render
+	tests/check-dropped-metrics.py out/head
 
 secrets:
 	$(CHECKS)/secrets.sh .
