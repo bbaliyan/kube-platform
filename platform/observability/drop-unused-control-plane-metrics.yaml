@@ -2,11 +2,11 @@
 # component. prometheus.dropUnusedControlPlaneMetrics drops them at scrape time.
 # `all` applies to the four components, `kubernetes` to all but etcd.
 # Each entry is a regex that Prometheus anchors on both ends.
-# tests/check-dropped-metrics.sh fails if one matches a name that a rule or dashboard uses.
+# tests/check-dropped-metrics.py fails if one matches a name that a rule or dashboard uses.
 # Kept on purpose: the _sum and _count of apiserver_request_duration_seconds and
 # etcd_request_duration_seconds, so averages survive without the _bucket series.
 # Helm lists replace, so a component that sets metricRelabelings loses the chart's own.
-# chartDefaults repeats the ones of the pinned chart. tests/check-dropped-metrics.sh
+# chartDefaults repeats the ones of the pinned chart. tests/check-dropped-metrics.py
 # fails when the chart's defaults change.
 chartDefaults:
   kubeApiServer:
@@ -18,7 +18,6 @@ chartDefaults:
 all:
   - go_(gc|godebug|memory|cpu|sched|memstats|sync|cgo)_.*|go_threads|go_info
   - process_(virtual|network|open|max)_.*
-  - scrape_series_added|scrape_samples_post_metric_relabeling
   - (registered|hidden|disabled)_metrics_total|cardinality_enforcement_unexpected_categorizations_total
   - version_info
   - aggregator_discovery_.*

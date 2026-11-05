@@ -23,6 +23,9 @@ defaults, then one rule that drops the preset's regexes and extraDropMetrics.
 {{- $regexes = concat $regexes $data.kubernetes -}}
 {{- end -}}
 {{- end -}}
+{{- range .root.Values.prometheus.extraDropMetrics -}}
+{{- $_ := mustRegexMatch . "" -}}
+{{- end -}}
 {{- $regexes = concat $regexes (.root.Values.prometheus.extraDropMetrics | default list) -}}
 {{- $rules := concat (get $data.chartDefaults .component | default list) (list (dict "action" "drop" "sourceLabels" (list "__name__") "regex" (join "|" $regexes))) -}}
 {{- toYaml $rules -}}

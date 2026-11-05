@@ -45,6 +45,7 @@ expect_rejected "a value of the wrong type is rejected" "$fixtures/wrong-type.ya
 
 expect_rejected "a drop preset that is not a boolean is rejected" "$fixtures/wrong-type-drop-preset.yaml" "dropUnusedControlPlaneMetrics"
 expect_rejected "extraDropMetrics that is not a list is rejected" "$fixtures/wrong-type-extra-drop.yaml" "extraDropMetrics"
+expect_rejected "an extraDropMetrics regex that does not compile is rejected" "$fixtures/invalid-regex-extra-drop.yaml" "regexp"
 expect_rejected "an empty extraDropMetrics regex is rejected" "$fixtures/empty-extra-drop.yaml" "extraDropMetrics"
 
 # The Prometheus Application carries the chart values as one string, so these

@@ -122,7 +122,8 @@ def render_with_preset(workdir):
     for f in clusters.glob("*.yaml"):
         f.unlink()
     values = cluster["spec"]["sources"][0]["helm"]["valuesObject"]
-    values["observabilityExtraHelmValues"] = {"prometheus": {"dropUnusedControlPlaneMetrics": True}}
+    extra = values.setdefault("observabilityExtraHelmValues", {})
+    extra.setdefault("prometheus", {})["dropUnusedControlPlaneMetrics"] = True
     (clusters / f"{CLUSTER}.yaml").write_text(yaml.safe_dump(cluster), encoding="utf-8")
     out = workdir / "out"
     subprocess.run([sys.executable, str(root / "ci" / "render.py"), str(root), str(out)], check=True)

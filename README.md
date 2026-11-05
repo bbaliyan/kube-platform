@@ -170,8 +170,23 @@ durations. The cluster then has no latency percentiles for them. The
 `apiserver_request_sli_duration_seconds` and `apiserver_request_total`,
 which the stock alerts and dashboards use.
 
+The preset also drops the Go runtime and process families (`go_gc_*`,
+`go_memstats_*`, `process_open_*` and similar) and many informer, workqueue
+and `rest_client` families of those four components. A custom dashboard or
+rule on them shows no data.
+
+The preset does not cover Cilium. It does not cover the unused `_bucket`
+series of kubelet, Grafana, Argo CD, Prometheus, the operator and
+Alertmanager either.
+
 Warning: a dashboard or rule you write later can use a dropped metric. It
-then shows no data. Check the metric names against the preset first.
+then shows no data. Verify the metric names against the preset first.
+
+Warning: the platform joins all regexes with `|` into one rule per
+component. A regex such as `up`, `.*` or `apiserver_request_total` silently
+disables control-plane alerts (`KubeAPIDown`, the SLO burn alerts) and
+dashboards. The render fails on a regex that does not compile. Verify that
+each regex matches only the names you want to drop before you set it.
 
 To turn it on, add this to `platform-values/observability.yaml`:
 
