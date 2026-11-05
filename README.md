@@ -144,6 +144,66 @@ starts deleting logs older than the retention on its next sync.
 
 Loki keeps its volume when the StatefulSet is scaled to 0 or deleted.
 
+### Dropping unused metrics
+
+The API server alone can be half of all series in Prometheus. Most of them
+are histogram buckets that no stock rule or dashboard reads. Two keys under
+`prometheus` drop series before they are stored. Both are optional.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `prometheus.dropUnusedControlPlaneMetrics` | `false` | If `true`, drops the series that no stock rule or dashboard uses. |
+| `prometheus.extraDropMetrics` | `[]` | A list of regexes of metric names to drop, on top of the preset. |
+
+Both keys apply to the same four components: the API server, etcd, the
+controller manager and the scheduler. They add a `drop` rule to the
+`metricRelabelings` of each component's ServiceMonitor. The chart's own
+default rules stay in place. The preset lists are in
+`platform/observability/drop-unused-control-plane-metrics.yaml`.
+
+Prometheus anchors each regex on both ends. `apiserver_.*` drops every name
+that starts with `apiserver_`. `apiserver_request` drops nothing.
+
+The preset drops the `_bucket` series of the API server and etcd request
+durations. The cluster then has no latency percentiles for them. The
+`_sum` and `_count` series stay, so averages still work. The preset keeps
+`apiserver_request_sli_duration_seconds` and `apiserver_request_total`,
+which the stock alerts and dashboards use.
+
+The preset also drops the Go runtime and process families (`go_gc_*`,
+`go_memstats_*`, `process_open_*` and similar) and many informer, workqueue
+and `rest_client` families of those four components. A custom dashboard or
+rule on them shows no data.
+
+The preset does not cover Cilium. It does not cover the unused `_bucket`
+series of kubelet, Grafana, Argo CD, Prometheus, the operator and
+Alertmanager either.
+
+Warning: a dashboard or rule you write later can use a dropped metric. It
+then shows no data. Verify the metric names against the preset first.
+
+Warning: the platform joins all regexes with `|` into one rule per
+component. A regex such as `up`, `.*` or `apiserver_request_total` silently
+disables control-plane alerts (`KubeAPIDown`, the SLO burn alerts) and
+dashboards. The render fails on a regex that does not compile. Verify that
+each regex matches only the names you want to drop before you set it.
+
+To turn it on, add this to `platform-values/observability.yaml`:
+
+```yaml
+prometheus:
+  dropUnusedControlPlaneMetrics: true
+  extraDropMetrics:
+    - etcd_request_duration_seconds_(sum|count)
+```
+
+CI renders the platform with the preset on. It then collects every metric
+name in the rendered PrometheusRules and dashboards, including this repo's
+own. It fails if a preset regex matches one of them. A chart upgrade that
+starts to use a dropped metric fails in CI before it reaches a cluster. The
+check cannot see rules and dashboards that a cluster adds, or dashboards
+that Grafana downloads at start.
+
 ## Upgrading
 
 Versions are pinned in `platform/platform-versions/values.yaml`, in the
@@ -164,6 +224,9 @@ Every PR and every commit to `main` is checked on GitHub's runners:
 - **render**: renders the platform for each example cluster in
   `ci/clusters/`, validates it against Kubernetes and CRD schemas, and
   comments on the PR what it changes on each.
+- **dropped metrics**: part of the same job. It fails if the metric drop
+  preset matches a metric that a rule or dashboard uses. See "Dropping
+  unused metrics".
 - **e2e**: deploys the platform to a kind cluster and checks that every
   Application syncs and turns Healthy, every pod is ready, Argo CD answers
   through Traefik, and the platform's own Prometheus has no alert, scrape

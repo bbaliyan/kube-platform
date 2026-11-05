@@ -27,6 +27,16 @@
         },
         "retentionSize": {
           "type": "string"
+        },
+        "dropUnusedControlPlaneMetrics": {
+          "type": "boolean"
+        },
+        "extraDropMetrics": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },

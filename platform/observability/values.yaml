@@ -19,6 +19,12 @@ prometheus:
   # Drops the oldest blocks before the volume fills, for example "17GB" on a
   # 20Gi volume (about 85%). Empty means no size limit.
   retentionSize: ""
+  # Drops the series that no stock rule or dashboard uses from the API server, etcd,
+  # controller manager and scheduler. See "Dropping unused metrics" in the README.
+  dropUnusedControlPlaneMetrics: false
+  # Regexes of metric names to drop from the same four components, on top of the
+  # preset. Prometheus anchors each regex on both ends.
+  extraDropMetrics: []
   storage:
     size: 20Gi
     storageClassName: ""
