@@ -4,8 +4,9 @@
 storageClassName: ""
 
 # Size, storage class and retention for each component. A cluster sets the ones
-# it needs through observabilityExtraHelmValues, in its own Git repo. The
-# defaults are small on purpose.
+# it needs in platform-values/observability.yaml at the root of its workloads
+# repo, or through observabilityExtraHelmValues, which wins. Any other key is
+# rejected by values.schema.json.
 #
 # A component's storageClassName, when empty, falls back to storageClassName
 # above. IOPS and throughput belong to the StorageClass, not to this chart:
