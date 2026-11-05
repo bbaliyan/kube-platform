@@ -1,0 +1,2 @@
+prometheus:
+  storage: {size: 40Gi, iops: 3000}

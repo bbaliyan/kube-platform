@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Rejects a key this chart does not document, so a typo in platform-values/observability.yaml fails the sync instead of being ignored.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "prometheus": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "size": {
+              "type": "string",
+              "minLength": 1
+            },
+            "storageClassName": {
+              "type": "string"
+            }
+          }
+        },
+        "retention": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retentionSize": {
+          "type": "string"
+        }
+      }
+    },
+    "alertmanager": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "size": {
+              "type": "string",
+              "minLength": 1
+            },
+            "storageClassName": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "grafana": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "size": {
+              "type": "string",
+              "minLength": 1
+            },
+            "storageClassName": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "loki": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "size": {
+              "type": "string",
+              "minLength": 1
+            },
+            "storageClassName": {
+              "type": "string"
+            }
+          }
+        },
+        "retention": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "storageClassName": {},
+    "clusterFqdnSuffix": {},
+    "platformRepoURL": {},
+    "platformRevision": {},
+    "hubbleEnabled": {},
+    "gpuOperatorEnabled": {},
+    "issuerName": {},
+    "grafanaPlugins": {},
+    "nodeExporterTolerations": {},
+    "alertmanagerConfigMatcherStrategy": {},
+    "grafanaIni": {},
+    "grafanaEnvFromSecrets": {},
+    "platformNodeSelector": {}
+  }
+}

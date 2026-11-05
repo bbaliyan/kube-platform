@@ -77,9 +77,10 @@ spec:
 {{- end }}
           persistence:
             enabled: true
-            size: 5Gi
-{{- if .Values.storageClassName }}
-            storageClassName: {{ .Values.storageClassName | quote }}
+            size: {{ .Values.grafana.storage.size }}
+{{- $class := include "platform.storageClassName" (dict "own" .Values.grafana.storage.storageClassName "shared" .Values.storageClassName) }}
+{{- if $class }}
+            storageClassName: {{ $class | quote }}
 {{- end }}
           # A backend plugin such as mssql runs as its own process in this container,
           # and opening a dashboard runs all its panels' queries at once: 512Mi was
@@ -231,16 +232,20 @@ spec:
           prometheusSpec:
             priorityClassName: platform
             {{- include "platform.nodeSelector" . | nindent 12 }}
-            retention: 7d
+            retention: {{ .Values.prometheus.retention }}
+{{- if .Values.prometheus.retentionSize }}
+            retentionSize: {{ .Values.prometheus.retentionSize | quote }}
+{{- end }}
             storageSpec:
               volumeClaimTemplate:
                 spec:
-{{- if .Values.storageClassName }}
-                  storageClassName: {{ .Values.storageClassName | quote }}
+{{- $class := include "platform.storageClassName" (dict "own" .Values.prometheus.storage.storageClassName "shared" .Values.storageClassName) }}
+{{- if $class }}
+                  storageClassName: {{ $class | quote }}
 {{- end }}
                   resources:
                     requests:
-                      storage: 20Gi
+                      storage: {{ .Values.prometheus.storage.size }}
             # Prometheus 3 sets its own GOMEMLIMIT to 90% of the limit. Memory grows
             # with active series, which Hubble's metrics multiply, and replaying the
             # WAL after every nightly start peaks well above steady use.
@@ -262,12 +267,13 @@ spec:
             storage:
               volumeClaimTemplate:
                 spec:
-{{- if .Values.storageClassName }}
-                  storageClassName: {{ .Values.storageClassName | quote }}
+{{- $class := include "platform.storageClassName" (dict "own" .Values.alertmanager.storage.storageClassName "shared" .Values.storageClassName) }}
+{{- if $class }}
+                  storageClassName: {{ $class | quote }}
 {{- end }}
                   resources:
                     requests:
-                      storage: 2Gi
+                      storage: {{ .Values.alertmanager.storage.size }}
             resources:
               requests:
                 cpu: 10m
