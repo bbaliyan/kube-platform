@@ -1,0 +1,2 @@
+prometheus:
+  retentionSize: 90

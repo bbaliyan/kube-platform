@@ -28,6 +28,13 @@ ciliumOperatorReplicas: 1       # cilium-operator replica count; 1 suits single-
 gpuOperatorEnabled: false       # deploy NVIDIA GPU Operator — off by default; opt in per-cluster
 hubbleEnabled: false            # enable Hubble relay/UI/metrics and the matching Grafana dashboards — off by default; opt in per-cluster (see cilium-app.yaml and observability's prometheus-app.yaml)
 observabilityExtraHelmValues: {} # generic passthrough forwarded as helm.valuesObject on the observability Application, merged over platform/observability's own values.yaml (e.g. nodeExporterTolerations for a node carrying a custom taint) — set via platform_helm_values_object per-cluster
+# The workloads repo the cluster tracks, set by kube-compute only when one exists. With a repo,
+# a component Application reads platform-values/<component>.yaml from the root of that repo
+# (see "Observability storage" in the README). Empty adds no source. workloadsPath is accepted
+# but unused: the file sits at the repo root, outside the path the workloads Application applies.
+workloadsRepoURL: ""
+workloadsRevision: ""
+workloadsPath: ""
 gpuOperatorHelmValues: {}       # consumer-specific values (node selector/toleration, time-slicing config, etc.) merged over this Application's own driver.enabled: true default
 clusterFqdnSuffix: ""
 trustedCaPemB64: ""

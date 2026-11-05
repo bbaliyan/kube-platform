@@ -26,7 +26,13 @@ spec:
             type: filesystem
           auth_enabled: false
           limits_config:
-            retention_period: 72h
+            retention_period: {{ .Values.loki.retention }}
+          # retention_period only takes effect with the compactor's retention on.
+          # Loki 3 refuses to start with retention on and no delete_request_store.
+          compactor:
+            working_directory: /var/loki/compactor
+            retention_enabled: true
+            delete_request_store: filesystem
           schemaConfig:
             configs:
               - from: "2024-04-01"
@@ -41,9 +47,13 @@ spec:
           {{- include "platform.nodeSelector" . | nindent 10 }}
           persistence:
             enabled: true
-            size: 10Gi
-{{- if .Values.storageClassName }}
-            storageClass: {{ .Values.storageClassName | quote }}
+            # The chart's default deletes the volume whenever the StatefulSet scales to 0.
+            whenScaled: Retain
+            whenDeleted: Retain
+            size: {{ .Values.loki.storage.size }}
+{{- $class := include "platform.storageClassName" (dict "own" .Values.loki.storage.storageClassName "shared" .Values.storageClassName) }}
+{{- if $class }}
+            storageClass: {{ $class | quote }}
 {{- end }}
           # Queries over the retention period drive its memory, and Loki doesn't
           # size Go's heap from the container limit; GOMEMLIMIT is 90% of it.

@@ -42,6 +42,7 @@ lint-pipelines:
 test-scripts:
 	tests/preload-images.sh
 	tests/check-app-finalizers.sh
+	tests/check-observability-values.sh
 
 lint-renovate:
 	python3 -c "import json; json.load(open('renovate.json'))"

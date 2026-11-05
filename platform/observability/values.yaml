@@ -3,6 +3,39 @@
 # storage-provisioner wave sets the appropriate default before this deploys).
 storageClassName: ""
 
+# Size, storage class and retention for each component. A cluster sets the ones
+# it needs in platform-values/observability.yaml at the root of its workloads
+# repo, or through observabilityExtraHelmValues, which wins. Any other key is
+# rejected by values.schema.json.
+#
+# A component's storageClassName, when empty, falls back to storageClassName
+# above. IOPS and throughput belong to the StorageClass, not to this chart:
+# define a class with the speed you want and name it here.
+#
+# To grow a volume, raise its size. The class must set allowVolumeExpansion:
+# true. See "Observability storage" in the README for Loki, which needs a step.
+prometheus:
+  retention: 7d
+  # Drops the oldest blocks before the volume fills, for example "17GB" on a
+  # 20Gi volume (about 85%). Empty means no size limit.
+  retentionSize: ""
+  storage:
+    size: 20Gi
+    storageClassName: ""
+alertmanager:
+  storage:
+    size: 2Gi
+    storageClassName: ""
+grafana:
+  storage:
+    size: 5Gi
+    storageClassName: ""
+loki:
+  retention: 72h
+  storage:
+    size: 10Gi
+    storageClassName: ""
+
 # When set, Traefik IngressRoutes are created for Grafana and Prometheus.
 # Must match the clusterFqdnSuffix used in kube-platform bootstrap.
 clusterFqdnSuffix: ""

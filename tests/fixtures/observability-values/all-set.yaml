@@ -1,0 +1,11 @@
+prometheus:
+  retention: 30d
+  retentionSize: 34GB
+  storage: {size: 40Gi, storageClassName: fast}
+alertmanager:
+  storage: {size: 3Gi, storageClassName: cheap}
+grafana:
+  storage: {size: 6Gi, storageClassName: cheap}
+loki:
+  retention: 168h
+  storage: {size: 20Gi, storageClassName: fast}

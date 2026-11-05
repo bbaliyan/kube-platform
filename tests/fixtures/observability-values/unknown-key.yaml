@@ -1,0 +1,3 @@
+loki:
+  retention: 168h
+  retentionn: 24h

@@ -1,0 +1,2 @@
+prometheus: {retention: 7d}
+lokii: {}
