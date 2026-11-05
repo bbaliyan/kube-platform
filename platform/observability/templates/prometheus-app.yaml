@@ -327,6 +327,20 @@ spec:
           service:
             port: 2381
             targetPort: 2381
+{{- if include "platform.dropsControlPlaneMetrics" . }}
+          serviceMonitor:
+            metricRelabelings:
+{{ include "platform.controlPlaneMetricRelabelings" (dict "root" . "component" "kubeEtcd") | indent 14 }}
+{{- end }}
+{{- if include "platform.dropsControlPlaneMetrics" . }}
+{{- range $component := list "kubeApiServer" "kubeControllerManager" "kubeScheduler" }}
+
+        {{ $component }}:
+          serviceMonitor:
+            metricRelabelings:
+{{ include "platform.controlPlaneMetricRelabelings" (dict "root" $ "component" $component) | indent 14 }}
+{{- end }}
+{{- end }}
 
         # No kube-proxy to scrape: Cilium replaces it (kube-compute sets
         # disable-kube-proxy). Left on, KubeProxyDown fires on every cluster

@@ -1,0 +1,3 @@
+prometheus:
+  dropUnusedControlPlaneMetrics: true
+  extraDropMetrics: ["extra_one_.*", "extra_two"]

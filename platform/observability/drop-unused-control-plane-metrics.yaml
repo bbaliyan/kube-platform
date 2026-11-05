@@ -1,0 +1,52 @@
+# Metric names no stock kube-prometheus-stack rule or dashboard uses, per control-plane
+# component. prometheus.dropUnusedControlPlaneMetrics drops them at scrape time.
+# `all` applies to the four components, `kubernetes` to all but etcd.
+# Each entry is a regex that Prometheus anchors on both ends.
+# tests/check-dropped-metrics.sh fails if one matches a name that a rule or dashboard uses.
+# Kept on purpose: the _sum and _count of apiserver_request_duration_seconds and
+# etcd_request_duration_seconds, so averages survive without the _bucket series.
+# Helm lists replace, so a component that sets metricRelabelings loses the chart's own.
+# chartDefaults repeats the ones of the pinned chart. tests/check-dropped-metrics.sh
+# fails when the chart's defaults change.
+chartDefaults:
+  kubeApiServer:
+    - action: drop
+      regex: (etcd_request|apiserver_request_slo|apiserver_request_sli|apiserver_request)_duration_seconds_bucket;(0\.15|0\.2|0\.3|0\.35|0\.4|0\.45|0\.6|0\.7|0\.8|0\.9|1\.25|1\.5|1\.75|2|3|3\.5|4|4\.5|6|7|8|9|15|20|40|45|50)(\.0)?
+      sourceLabels:
+        - __name__
+        - le
+all:
+  - go_(gc|godebug|memory|cpu|sched|memstats|sync|cgo)_.*|go_threads|go_info
+  - process_(virtual|network|open|max)_.*
+  - scrape_series_added|scrape_samples_post_metric_relabeling
+  - (registered|hidden|disabled)_metrics_total|cardinality_enforcement_unexpected_categorizations_total
+  - version_info
+  - aggregator_discovery_.*
+kubernetes:
+  - kubernetes_feature_enabled
+  - informer_.*
+  - rest_client_(request_duration_seconds_(sum|count)|rate_limiter_duration_seconds_.*|request_size_bytes_.*|response_size_bytes_.*|exec_plugin_.*|request_retries_total|transport_.*)
+  - (authentication|authorization)_.*|authenticated_user_requests
+  - workqueue_(work_duration_seconds_.*|longest_running_processor_seconds|retries_total|unfinished_work_seconds|queue_duration_seconds_(sum|count))
+  - apiserver_(cel|delegated|webhooks|validation|audit|kube|storage|envelope|encryption|tls)_.*|apiserver_client_certificate_expiration_seconds_sum
+kubeApiServer:
+  - apiserver_(watch|storage|response|flowcontrol|admission|resource|longrunning|selfrequest|init|egress|current|authorization|websocket|terminated|nodeport)_.*|apiserver_requested_.*
+  - apiserver_request_(duration_seconds_bucket|body_size_bytes_.*|filter_duration_seconds_.*|timestamp_comparison_time_.*|aborts_total|post_timeout_total)
+  - etcd_(request_duration_seconds_bucket|requests_total|request_errors_total|bookmark_.*|lease_.*)
+  - (watch_cache|node_authorizer|apiextensions|kube_apiserver|serviceaccount|pod_security|field_validation|grpc_client)_.*
+kubeControllerManager:
+  - (endpoint_slice|job_controller|statefulset_controller|cronjob_controller|replicaset_controller|daemonset_controller|garbagecollector_controller|attachdetach_controller|node_ipam_controller|node_collector|pv_collector|root_ca_cert_publisher|clustertrustbundle_publisher|retroactive_storageclass|ephemeral_volume_controller|device_taint_eviction_controller|taint_eviction_controller|ttl_after_finished_controller|horizontal_pod_autoscaler)_.*
+  - leader_election_.*|running_managed_controllers|storage_count_.*|storage_operation_status_count
+kubeScheduler:
+  - scheduler_(plugin|event|framework|queueing|store|get|preemption|queue|pending|unschedulable|queued|cache|batch|inflight)_.*
+  - scheduler_(goroutines|schedule_attempts_total|pod_scheduled_after_flush_total|pod_scheduling_attempts_.*)
+  - leader_election_.*
+kubeEtcd:
+  - etcd_(debugging|snap|grpc_proxy|cluster)_.*
+  - etcd_server_(apply|request|range)_duration_seconds_.*
+  - etcd_server_(slow|snapshot|read|learner|heartbeat|health)_.*|etcd_server_(is_.*|id|version|go_version|feature_enabled|client_requests_total|proposals_(pending|committed_total|applied_total))
+  - etcd_mvcc_(hash|hash_rev)_duration_seconds_.*|etcd_mvcc_(txn|range|put|delete)_total|etcd_mvcc_db_open_read_transactions
+  - etcd_disk_(wal_write_.*|backend_snapshot_duration_seconds_.*|backend_defrag_duration_seconds_.*|defrag_inflight|(wal_fsync|backend_commit)_duration_seconds_(sum|count))
+  - etcd_network_known_peers
+  - grpc_server_(msg_sent_total|msg_received_total)
+  - promhttp_metric_handler_.*|os_fd_.*
