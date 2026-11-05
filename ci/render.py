@@ -44,7 +44,7 @@ RUNTIME_APIS = [
 # Fields of an Application source this renderer implements. Anything else
 # fails the render rather than being silently ignored.
 SOURCE_KEYS = {"repoURL", "targetRevision", "path", "chart", "ref", "helm", "name"}
-HELM_KEYS = {"releaseName", "valueFiles", "values", "valuesObject", "parameters"}
+HELM_KEYS = {"releaseName", "valueFiles", "ignoreMissingValueFiles", "values", "valuesObject", "parameters"}
 
 
 def kube_version(root):
@@ -196,9 +196,12 @@ class Renderer:
                 ref, _, rest = vf[1:].partition("/")
                 if ref not in refs:
                     raise RuntimeError(f"unresolvable valueFile {vf}")
-                cmd += ["--values", str(refs[ref] / rest)]
+                path = refs[ref] / rest
             else:
-                cmd += ["--values", str(chart_dir / vf)]
+                path = chart_dir / vf
+            if helm.get("ignoreMissingValueFiles") and not path.exists():
+                continue
+            cmd += ["--values", str(path)]
         # Argo CD uses valuesObject when set and ignores values.
         if helm.get("valuesObject"):
             f = self.tmpfile(f"values-obj-{name}")

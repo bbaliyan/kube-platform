@@ -1,3 +1,29 @@
+{{- define "platform.observabilitySource" -}}
+repoURL: {{ .Values.platformRepoURL }}
+targetRevision: {{ .Values.platformRevision }}
+path: platform/observability
+helm:
+  {{- if .Values.workloadsRepoURL }}
+  {{- include "platform.workloadsValueFile" "observability" | nindent 2 }}
+  {{- end }}
+  parameters:
+    - name: clusterFqdnSuffix
+      value: {{ .Values.clusterFqdnSuffix | quote }}
+    - name: platformRepoURL
+      value: {{ .Values.platformRepoURL | quote }}
+    - name: platformRevision
+      value: {{ .Values.platformRevision | quote }}
+    - name: hubbleEnabled
+      value: {{ .Values.hubbleEnabled | default false | quote }}
+    - name: gpuOperatorEnabled
+      value: {{ .Values.gpuOperatorEnabled | default false | quote }}
+    # A public ACME CA can't issue for in-cluster .svc names; empty
+    # leaves the webhook certificate to the chart's own CA.
+    - name: issuerName
+      value: {{ if ne .Values.certMode "acme" }}{{ .Values.pkiIssuerName | quote }}{{ else }}""{{ end }}
+  valuesObject:
+    {{- mustMergeOverwrite (dict "platformNodeSelector" .Values.platformNodeSelector) .Values.observabilityExtraHelmValues | toYaml | nindent 4 }}
+{{- end -}}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -9,28 +35,14 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
+{{- if .Values.workloadsRepoURL }}
+  sources:
+    - {{ include "platform.observabilitySource" . | indent 6 | trim }}
+    - {{ include "platform.workloadsSource" . | indent 6 | trim }}
+{{- else }}
   source:
-    repoURL: {{ .Values.platformRepoURL }}
-    targetRevision: {{ .Values.platformRevision }}
-    path: platform/observability
-    helm:
-      parameters:
-        - name: clusterFqdnSuffix
-          value: {{ .Values.clusterFqdnSuffix | quote }}
-        - name: platformRepoURL
-          value: {{ .Values.platformRepoURL | quote }}
-        - name: platformRevision
-          value: {{ .Values.platformRevision | quote }}
-        - name: hubbleEnabled
-          value: {{ .Values.hubbleEnabled | default false | quote }}
-        - name: gpuOperatorEnabled
-          value: {{ .Values.gpuOperatorEnabled | default false | quote }}
-        # A public ACME CA can't issue for in-cluster .svc names; empty
-        # leaves the webhook certificate to the chart's own CA.
-        - name: issuerName
-          value: {{ if ne .Values.certMode "acme" }}{{ .Values.pkiIssuerName | quote }}{{ else }}""{{ end }}
-      valuesObject:
-        {{- mustMergeOverwrite (dict "platformNodeSelector" .Values.platformNodeSelector) .Values.observabilityExtraHelmValues | toYaml | nindent 8 }}
+    {{- include "platform.observabilitySource" . | nindent 4 }}
+{{- end }}
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
