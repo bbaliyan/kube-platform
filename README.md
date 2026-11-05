@@ -101,6 +101,9 @@ A push to that repo changes the values. No Terraform run is needed.
   any other key. A bad file makes the `observability` sync fail. Argo CD
   does not ignore it. CI runs the same check against sample files.
 - If the file is missing, the Application renders with the defaults.
+- Argo CD must be able to read the workloads repo. If the repo is private,
+  add a repository credential. If Argo CD cannot reach the repo, the
+  `observability` sync fails, even when the file does not exist.
 - `observabilityExtraHelmValues` overrides the file. Argo CD gives
   `valuesObject` priority over `valueFiles`.
 - The file is read only when kube-compute passes `workloadsRepoURL`. The
@@ -120,15 +123,18 @@ A size increase needs `allowVolumeExpansion: true` on the StorageClass.
 - Loki: Kubernetes does not let a StatefulSet change its volume template.
   Follow the steps below.
 
+Warning: in step 4, you must delete only the StatefulSet. Use
+`--cascade=orphan`. Without it, the pod stops.
+
 To grow the Loki volume:
 
-1. Raise `loki.storage.size` in Git. Argo CD now shows the `loki` Application out of sync.
-2. Patch the existing claim to the new size:
+1. Raise `loki.storage.size` in Git.
+2. Verify that Argo CD shows the `loki` Application out of sync.
+3. Patch the existing claim to the new size:
    `kubectl -n loki patch pvc storage-loki-0 -p '{"spec":{"resources":{"requests":{"storage":"20Gi"}}}}'`
-3. Delete only the StatefulSet: `kubectl -n loki delete statefulset loki --cascade=orphan`
-4. Sync the `loki` Application. Argo CD recreates the StatefulSet with the new size.
-
-Step 3 keeps the pod and the claim. Without `--cascade=orphan`, the pod stops.
+4. Delete only the StatefulSet: `kubectl -n loki delete statefulset loki --cascade=orphan`
+5. Verify that the claim shows the new size: `kubectl -n loki get pvc storage-loki-0`
+6. Sync the `loki` Application. Argo CD recreates the StatefulSet with the new size.
 
 ### Loki retention and the claim
 
