@@ -1,0 +1,11 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logs
+  namespace: demo
+spec:
+  template:
+    spec:
+      containers:
+        - image: docker.io/grafana/loki:3.0.0
+          name: logs

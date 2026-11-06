@@ -1,0 +1,23 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: demo
+webhooks:
+  - name: check.demo.example
+    failurePolicy: Fail
+    sideEffects: None
+    timeoutSeconds: 5
+    namespaceSelector:
+      matchLabels:
+        demo: "true"
+    clientConfig:
+      service:
+        name: checker
+        namespace: demo
+        path: /validate
+      caBundle: Zm9v
+    rules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]

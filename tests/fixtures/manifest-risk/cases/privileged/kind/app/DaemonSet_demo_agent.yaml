@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: agent
+  namespace: demo
+spec:
+  template:
+    spec:
+      hostNetwork: true
+      containers:
+        - image: docker.io/grafana/grafana:13.0.0
+          name: agent
+          securityContext:
+            privileged: true
+      volumes:
+        - name: root
+          hostPath:
+            path: /

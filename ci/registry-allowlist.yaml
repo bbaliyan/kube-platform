@@ -1,0 +1,47 @@
+# Image registries that kube-platform pulls from, for ci/manifest_risk.py.
+# A new image repository on a listed registry is only reported as a new image.
+# A new repository on any other registry, or outside the listed prefixes, is
+# also reported as outside the allowlist. That is how a typosquat shows up.
+#
+# One entry per registry.
+#   registry      the host, as ci/promotion_record.py writes it
+#   repositories  optional. Path prefixes that are trusted on this registry.
+#                 Leave it out to trust the whole registry.
+#   reason        required. Why this registry or these prefixes are trusted.
+- registry: docker.io
+  repositories:
+    - library/
+    - grafana/
+    - rancher/
+    - longhornio/
+    - curlimages/
+    - kiwigrid/
+  reason: Official images and the projects that publish to Docker Hub under their own organisation (Grafana Labs, Rancher, Longhorn, curl, kiwigrid).
+- registry: quay.io
+  repositories:
+    - argoproj/
+    - cilium/
+    - jetstack/
+    - prometheus/
+    - prometheus-operator/
+    - thanos/
+    - kiwigrid/
+  reason: Organisations of the Argo CD, Cilium, cert-manager, Prometheus, Thanos and kiwigrid projects.
+- registry: ghcr.io
+  repositories:
+    - democratic-csi/
+    - dexidp/
+    - external-secrets/
+    - headlamp-k8s/
+  reason: Organisations of the democratic-csi, Dex, External Secrets and Headlamp projects.
+- registry: registry.k8s.io
+  reason: The registry of the Kubernetes project. Only the project can push to it.
+- registry: nvcr.io
+  repositories:
+    - nvidia/
+  reason: NVIDIA's registry, for the GPU operator and its components.
+- registry: public.ecr.aws
+  repositories:
+    - csi-components/
+    - ebs-csi-driver/
+  reason: AWS's public registry, for the EBS CSI driver and the CSI sidecars it ships.

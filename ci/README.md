@@ -254,6 +254,96 @@ token) log in to Docker Hub for the pulls, so the shared runner address is not
 rate limited. Set both or neither. The login is written for `index.docker.io` only, so no other
 registry receives it.
 
+## Manifest-risk diff
+
+Image scanning cannot see a chart update that adds a hook, a privileged
+container or a wildcard role. `ci/manifest_risk.py` renders `stable` and a
+candidate commit and keeps only the changes in these classes:
+
+- `rbac`: a rule of a Role or ClusterRole, an aggregation rule or label, and
+  the subjects and role of a binding.
+- `webhook`: a webhook (failure policy, selectors, target, timeout, side
+  effects, CA bundle), an admission policy, an APIService and a CRD
+  conversion webhook.
+- `hook`: an object with a Helm or Argo CD hook annotation, with the image
+  repository, command and arguments of its containers. The image tag is left
+  out, so a version bump of a hook image needs no approval. This is the
+  accepted gap for tags below: the soak, the scan and the daily digest check
+  cover them.
+- `privileged`: privileged mode, added capabilities, privilege escalation,
+  Unmasked `procMount`, Unconfined seccomp or AppArmor, `runAsUser: 0`,
+  `hostPath` and local volumes, `hostNetwork`, `hostPID`, `hostIPC`,
+  `hostPort`, and a namespace with the `privileged` Pod Security label. The
+  script reads every mapping of an object, so it also finds these in the pod
+  specs of custom resources.
+- `source`: the `repoURL` and chart or path of an Argo CD Application (not
+  `targetRevision`, which Renovate changes), and what an AppProject allows.
+- `image`: an image repository that `stable` does not use on that cluster.
+- `registry`: a new image repository outside `ci/registry-allowlist.yaml`.
+  This catches a typosquat.
+
+An addition is something one cluster has in the candidate and does not have in
+`stable`. The comparison is per cluster. A rule that changes counts as one
+removal and one addition. A removal never needs approval.
+
+`ci/registry-allowlist.yaml` has one entry per registry. Each entry has a
+reason. It can list path prefixes, so that `grafana/` is trusted on Docker Hub
+and `grafanna/` is not. A prefix ends at a `/`.
+
+To run it:
+
+1. Run `make manifest-risk STABLE_REF=<stable commit>`. The default is `origin/stable`.
+   The checked-out commit is the candidate. The run renders both sides, so it needs the network and helm.
+
+The run writes two files to `out/manifest-risk/`. Both go to the run summary
+and to the release.
+
+- `manifest-risk.json` is the result. `needsApproval` is `true` when there is
+  any addition, and `false` when the diff is empty or has only removals. The
+  promote workflow reads this field. `additions` and `removals` list each item
+  with its severity, class, object, detail and clusters, most severe first.
+- `manifest-risk.md` is the text for the run summary. It shows the count of
+  each class, then the most severe rows. It states how many rows it does not
+  show, with the number of rows for each object. The JSON has every row up to
+  5000 per list. The counts are always complete.
+
+Every field in the Markdown is cleaned and cut to a fixed length. A cut value
+ends with a hash of the whole value. The summary is cut to 900 000 bytes.
+
+If `GITHUB_OUTPUT` is set, the script also writes `needs_approval` and
+`additions` to it. It writes only a boolean and a number.
+
+### Rules for the promote workflow
+
+- The workflow must run this tool, `render.py`, `render-base.sh`, the
+  `Makefile` and the allowlist from a trusted checkout (`main` or `stable`).
+  It must never run them from the candidate tree. A candidate that changes
+  them could hide its own additions. Render the candidate with the trusted
+  `ci/`, as `render-base.sh` does for the base.
+- If the `needs_approval` output is absent or empty, or the step exits with
+  a non-zero code, approval is needed. Fail the job. Only the value `false`
+  from a step that exited with code 0 means that no approval is needed.
+- The step exits with code 2 if a render is missing or empty, if an object
+  cannot be read, or if the allowlist is not valid. A broken render never
+  looks like an empty diff.
+
+### Known gaps
+
+- A new tag of a repository that `stable` already uses is not an addition.
+  The 7-day soak, the image scan and the daily digest check cover tags.
+- Anything that only exists at runtime is not visible in a render: images that
+  an operator builds on the node, and code that a container downloads at
+  start.
+- Argo CD ApplicationSets, AppProject destinations, Gatekeeper and Kyverno
+  policies, NetworkPolicies, Service types, Ingress and Gateway routes, and
+  ConfigMap and Secret contents are not read.
+- The `privileged` class reads the pod fields above. A custom resource that
+  names host access in a field of its own, for example a hostPath key under
+  another name, is not found.
+
+`make test-commit` runs `tests/check-manifest-risk.py`, which uses the fixtures
+in `tests/fixtures/manifest-risk/`.
+
 ## Example clusters
 
 Each file in `clusters/` is a root `platform` Application, written the way a

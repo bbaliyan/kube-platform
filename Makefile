@@ -52,6 +52,7 @@ test-scripts:
 	tests/check-app-finalizers.sh
 	tests/check-observability-values.sh
 	tests/check-promotion-record.py
+	tests/check-manifest-risk.py
 
 lint-renovate:
 	python3 -c "import json; json.load(open('renovate.json'))"
@@ -126,3 +127,17 @@ promotion-record:
 
 test-integration:
 	ci/e2e/run.sh
+
+# manifest-risk compares the checked-out commit (the candidate) with STABLE_REF
+# and keeps only the risk classes. It writes manifest-risk.json and
+# manifest-risk.md to out/manifest-risk. It is not part of test-commit: it
+# needs the network.
+STABLE_REF ?= origin/stable
+
+.PHONY: manifest-risk
+manifest-risk: render
+	ci/render-base.sh "$(STABLE_REF)"
+	test -d out/base || { echo "manifest-risk: $(STABLE_REF) did not render"; exit 1; }
+	python3 ci/manifest_risk.py --stable out/base --candidate out/head \
+		--allowlist ci/registry-allowlist.yaml --out-dir out/manifest-risk
+	if [ -n "$${GITHUB_STEP_SUMMARY:-}" ]; then cat out/manifest-risk/manifest-risk.md >> "$$GITHUB_STEP_SUMMARY"; fi

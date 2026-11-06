@@ -1,0 +1,14 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  namespace: demo
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+spec:
+  template:
+    spec:
+      containers:
+        - image: docker.io/grafana/grafana:13.0.0
+          name: migrate
+      restartPolicy: Never
