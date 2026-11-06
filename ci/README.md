@@ -188,7 +188,8 @@ It fails closed. It blocks when:
 - the Trivy database is older than 48 hours or dated in the future, cannot be
   downloaded, or Trivy cannot report its version
 - an image of the record has no scan result, or its scan failed
-- Trivy detects nothing in an image (no results and no operating system)
+- Trivy detects nothing in an image (no results and no operating system),
+  unless the ignore file has an `image` entry for its repository
 - the KEV file is missing, is not a CISA catalog, is older than 21 days or is
   dated in the future
 - an ignore entry has a bad ID, has expired, has no reason, or expires more than
@@ -218,6 +219,16 @@ To run it:
 To accept a finding for a while, add a line to `ci/security-gate.trivyignore`:
 
     CVE-2026-0001 exp:2027-01-31 reason:no upstream fix, not reachable
+
+A static binary such as `registry.k8s.io/pause` has no packages, so Trivy
+detects nothing. An `image` entry exempts a repository (not a digest) from that
+one failure:
+
+    image registry.k8s.io/pause exp:2027-01-31 reason:static binary, no OS packages
+
+The exemption does not hide findings. If the scan has results, the gate checks
+them as usual. The exemptions a run used are in the job summary and in
+`scan.exemptions` of the record.
 
 The ID, the reason and the date are all required. The date must be within
 90 days of today. `make check-trivyignore` (part of `make test-commit`) fails

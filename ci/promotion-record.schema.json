@@ -64,7 +64,7 @@
       "description": "The result of the security gate (ci/security_gate.py). Absent until the gate has run. Findings are the HIGH and CRITICAL ones, and any on the CISA KEV list.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["scannedAt", "verdict", "baselineCommit", "imagesListed", "imagesScanned", "counts", "reasons", "findings"],
+      "required": ["scannedAt", "verdict", "baselineCommit", "imagesListed", "imagesScanned", "counts", "reasons", "exemptions", "findings"],
       "properties": {
         "scannedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$" },
         "verdict": { "enum": ["pass", "block"] },
@@ -88,6 +88,19 @@
           }
         },
         "reasons": { "description": "Why the gate blocks. Empty when the verdict is pass.", "type": "array", "items": { "type": "string" } },
+        "exemptions": {
+          "description": "Images that Trivy detected nothing in, and that the ignore file exempts from that failure.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["image", "reason"],
+            "properties": {
+              "image": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
         "findings": {
           "type": "array",
           "items": {

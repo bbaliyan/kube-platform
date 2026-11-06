@@ -37,7 +37,9 @@ Fail closed (block) when:
   - the database cannot be downloaded;
   - an image of the record has no scan result, or its scan failed;
   - Trivy detects nothing in an image (no results and no operating system), so
-    an image it could not read never looks clean;
+    an image it could not read never looks clean. An "image" entry for the
+    repository in the ignore file exempts this one failure (a static binary such
+    as pause has no packages). Findings of an exempt repository are still checked;
   - the KEV file is missing, unreadable, older than 21 days or dated in the future;
   - an ignore entry has a bad ID, no reason, no valid expiry date, an expiry
     more than 90 days away, or has expired;
@@ -48,7 +50,10 @@ Fail closed (block) when:
 The ignore file has one entry per line, in the .trivyignore style:
     CVE-2026-0001 exp:2027-01-31 reason:no upstream fix, not reachable
 An ignored finding stays in the record with the status "ignored". It does not
-block. An entry can silence a KEV finding too.
+block. An entry can silence a KEV finding too. A second kind of entry exempts a
+repository from the "nothing detected" failure only:
+    image registry.k8s.io/pause exp:2027-01-31 reason:static binary, no OS packages
+The exemptions that a run used are listed in the record and in the summary.
 """
 
 import argparse
@@ -71,6 +76,7 @@ MAX_SUMMARY_ROWS = 40
 EXPIRY = re.compile(r"(?:^|\s)exp:(\S+)")
 REASON = re.compile(r"(?:^|\s)reason:(.*\S)")
 VULN_ID = re.compile(r"^(CVE-\d{4}-\d{4,}|GHSA(-[a-z0-9]{4}){3})$")
+REPOSITORY = re.compile(r"^[a-z0-9][a-z0-9.-]*(:\d+)?/[a-z0-9._/-]+$")
 MAX_IGNORE_DAYS = 90
 SEVERITY_RANK = {"UNKNOWN": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 
@@ -86,20 +92,27 @@ def now_utc(text=None):
 # ---------------------------------------------------------------- ignore file
 
 def load_ignore(path, today):
-    """({id: reason} of the valid entries, [problems]). An entry that is
-    expired or incomplete is a problem and is not in the dict."""
-    entries, problems = {}, []
+    """({id: reason}, {repository: reason}, [problems]). The dicts hold the valid
+    entries. An entry that is expired or incomplete is a problem and is not in
+    a dict."""
+    entries, images, problems = {}, {}, []
     for number, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
+        is_image = line.split()[0] == "image"
         vuln_id, _, rest = line.strip().partition(" ")
+        if is_image:
+            vuln_id, _, rest = rest.strip().partition(" ")
         expiry, reason = EXPIRY.search(rest), REASON.search(rest)
         try:
             expires = date.fromisoformat(expiry[1]) if expiry else None
         except ValueError:
             expires = None
         bad = False
-        if not VULN_ID.match(vuln_id):
+        if is_image and not REPOSITORY.match(vuln_id):
+            problems.append(f"{path}:{number}: {vuln_id} is not a repository with a registry host")
+            bad = True
+        elif not is_image and not VULN_ID.match(vuln_id):
             problems.append(f"{path}:{number}: {vuln_id} is not a CVE or GHSA id")
             bad = True
         if expires is None:
@@ -116,8 +129,8 @@ def load_ignore(path, today):
             problems.append(f"{path}:{number}: {vuln_id} has no reason:<text>")
             bad = True
         if not bad:
-            entries[vuln_id] = reason[1]
-    return entries, problems
+            (images if is_image else entries)[vuln_id] = reason[1]
+    return entries, images, problems
 
 
 # ------------------------------------------------------------------ scanning
@@ -137,8 +150,6 @@ def findings_of(report):
     highest severity, so a fixable instance is never hidden by an unfixable one."""
     if not isinstance(report, dict) or "SchemaVersion" not in report or "ArtifactName" not in report:
         raise RuntimeError("the output is not a Trivy report")
-    if not report.get("Results") and not (report.get("Metadata") or {}).get("OS"):
-        raise RuntimeError("no packages detected: Trivy found no results and no operating system")
     found = {}
     for result in report.get("Results") or []:
         for v in result.get("Vulnerabilities") or []:
@@ -157,6 +168,12 @@ def findings_of(report):
     return sorted(found.values(), key=lambda f: (f["id"], f["package"]))
 
 
+def detected_nothing(report):
+    """True when Trivy found no results and no operating system: it read no
+    packages, so an empty list of findings says nothing."""
+    return not report.get("Results") and not (report.get("Metadata") or {}).get("OS")
+
+
 def scan_image(entry, attempts):
     target = f"{repository_of(entry['reference'])}@{entry['digest']}"
     error = None
@@ -166,8 +183,10 @@ def scan_image(entry, attempts):
             try:
                 run(["trivy", "image", "--skip-db-update", "--scanners", "vuln", "--image-src", "remote",
                      "--cache-backend", "memory", "--format", "json", "--output", str(out), target], 1200)
+                report = json.loads(out.read_text(encoding="utf-8"))
+                findings = findings_of(report)
                 return {"reference": entry["reference"], "digest": entry["digest"], "error": None,
-                        "findings": findings_of(json.loads(out.read_text(encoding="utf-8")))}
+                        "noPackages": detected_nothing(report), "findings": findings}
             except (RuntimeError, OSError, ValueError, KeyError, subprocess.TimeoutExpired) as e:
                 error = str(e)
     return {"reference": entry["reference"], "digest": entry["digest"], "error": error, "findings": []}
@@ -236,9 +255,11 @@ def baseline_problem(baseline):
     return None
 
 
-def decide(record, scan_data, kev, ignored, ignore_problems, baseline, now):
+def decide(record, scan_data, kev, ignored, ignore_problems, baseline, now, exempt_images=None):
     """(new record, [reasons the run is blocked]). baseline is a record, or None
-    for the first promotion."""
+    for the first promotion. exempt_images is {repository: reason}."""
+    exempt_images = exempt_images or {}
+    exemptions = []
     reasons = list(ignore_problems)
     scanner = scan_data.get("scanner")
     if not scanner:
@@ -267,6 +288,14 @@ def decide(record, scan_data, kev, ignored, ignore_problems, baseline, now):
         elif r["error"]:
             reasons.append(f"scan failed for {entry['reference']}: {r['error']}")
     scanned = [d for d in listed if d in results and not results[d]["error"]]
+    for digest in scanned:
+        if results[digest].get("noPackages"):
+            repository = repository_of(listed[digest]["reference"])
+            if repository in exempt_images:
+                exemptions.append({"image": repository, "reason": exempt_images[repository]})
+            else:
+                reasons.append(f"no packages detected in {listed[digest]['reference']}: "
+                               "Trivy found no results and no operating system")
 
     baseline_digests, baseline_keys = set(), set()
     if baseline is not None:
@@ -315,6 +344,7 @@ def decide(record, scan_data, kev, ignored, ignore_problems, baseline, now):
         "counts": {"blocking": count("blocking"), "known": count("known"), "ignored": count("ignored"),
                    "kev": sum(f["kev"] for f in findings), "otherSeverities": others},
         "reasons": sorted(set(reasons)),
+        "exemptions": sorted(exemptions, key=lambda e: e["image"]),
         "findings": findings,
     }
     return out, sorted(set(reasons))
@@ -335,6 +365,9 @@ def summary_of(record):
     ]
     if scan["reasons"]:
         lines += ["", "Why it blocks:", ""] + [f"- {r}" for r in scan["reasons"]]
+    if scan["exemptions"]:
+        lines += ["", "Exempt from the nothing-detected failure (ignore file):", ""]
+        lines += [f"- {e['image']}: {e['reason']}" for e in scan["exemptions"]]
     rows = [f for f in scan["findings"] if f["status"] != "ignored"]
     rows.sort(key=lambda f: (f["status"] != "blocking", f["severity"] != "CRITICAL"))
     if rows:
@@ -350,13 +383,13 @@ def run_decide(args):
     today = now_utc(args.now).date()
     record = json.loads(Path(args.record).read_text(encoding="utf-8"))
     baseline = None if args.no_baseline else json.loads(Path(args.baseline).read_text(encoding="utf-8"))
-    ignored, ignore_problems = load_ignore(args.ignore, today)
+    ignored, exempt_images, ignore_problems = load_ignore(args.ignore, today)
     try:
         kev = json.loads(Path(args.kev).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         kev = None
     new_record, reasons = decide(record, json.loads(Path(args.scan).read_text(encoding="utf-8")),
-                                 kev, ignored, ignore_problems, baseline, now_utc(args.now))
+                                 kev, ignored, ignore_problems, baseline, now_utc(args.now), exempt_images)
     problems = validate_record(new_record)
     if problems:
         sys.exit("record does not match its schema:\n  " + "\n  ".join(problems))
@@ -372,7 +405,7 @@ def run_decide(args):
 
 
 def run_check_ignore(args):
-    _, problems = load_ignore(args.file, now_utc(args.now).date())
+    _, _, problems = load_ignore(args.file, now_utc(args.now).date())
     if problems:
         sys.exit("\n".join(problems))
     print("ok")

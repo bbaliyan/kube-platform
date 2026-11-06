@@ -1,5 +1,10 @@
 # Findings that the security gate (ci/security_gate.py) accepts for a while.
 # One entry per line. The date and the reason are both required.
 # Format: CVE-YYYY-NNNN exp:YYYY-MM-DD reason:<one line>
+# An image entry exempts a repository from the "no packages detected" failure only:
+#         image <registry/repository> exp:YYYY-MM-DD reason:<one line>
+# The expiry is at most 90 days away. Renew an entry when it expires.
 # An entry that has expired, or lacks a reason, fails `make check-trivyignore`
 # and blocks the gate.
+
+image registry.k8s.io/pause exp:2027-01-31 reason:static binary, no OS packages

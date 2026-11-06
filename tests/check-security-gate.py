@@ -62,9 +62,14 @@ def kev_of(*ids, released="2026-11-05T00:00:00Z"):
     return {"dateReleased": released, "count": len(ids), "vulnerabilities": [{"cveID": i} for i in ids]}
 
 
-def decide(rec, scan, kev=None, ignored=None, problems=(), baseline=None):
+def decide(rec, scan, kev=None, ignored=None, problems=(), baseline=None, exempt=None):
     return security_gate.decide(rec, scan, kev if kev is not None else kev_of("CVE-2000-0001"),
-                                ignored or {}, list(problems), baseline, NOW)
+                                ignored or {}, list(problems), baseline, NOW, exempt)
+
+
+def empty_result(img):
+    """A scan where Trivy detected nothing, as for a static binary."""
+    return dict(result(img), noPackages=True)
 
 
 class Decision(unittest.TestCase):
@@ -218,6 +223,37 @@ class Decision(unittest.TestCase):
         self.assertEqual(out["scanner"], {"name": "trivy", "version": "0.76.1", "databaseUpdatedAt": FRESH_DB})
         self.assertIn("blocking", security_gate.summary_of(out))
 
+    def test_an_image_with_no_packages_blocks(self):
+        cand = image("registry.k8s.io/pause", D2)
+        out, reasons = decide(record(cand), scan_of(empty_result(cand)), baseline=self.baseline())
+        self.assertEqual(len(reasons), 1)
+        self.assertIn("no packages detected", reasons[0])
+        self.assertEqual(out["scan"]["exemptions"], [])
+
+    def test_an_exempt_image_with_no_packages_passes_and_is_listed(self):
+        cand = image("registry.k8s.io/pause", D2)
+        out, reasons = decide(record(cand), scan_of(empty_result(cand)), baseline=self.baseline(),
+                              exempt={"registry.k8s.io/pause": "static binary"})
+        self.assertEqual(reasons, [])
+        self.assertEqual(out["scan"]["exemptions"], [{"image": "registry.k8s.io/pause", "reason": "static binary"}])
+        self.assertEqual(promotion_record.validate_record(out), [])
+        self.assertIn("registry.k8s.io/pause: static binary", security_gate.summary_of(out))
+
+    def test_an_exemption_is_for_the_repository_it_names(self):
+        cand = image("registry.k8s.io/other", D2)
+        _, reasons = decide(record(cand), scan_of(empty_result(cand)), baseline=self.baseline(),
+                            exempt={"registry.k8s.io/pause": "static binary"})
+        self.assertEqual(len(reasons), 1)
+
+    def test_an_exempt_repository_with_findings_is_still_checked(self):
+        old, cand = image(APP, D1), image(APP, D2)
+        base = self.baseline()
+        out, reasons = decide(record(cand), scan_of(result(cand, finding("CVE-2026-0002"))), baseline=base,
+                              exempt={APP: "static binary"})
+        self.assertEqual(len(reasons), 1)
+        self.assertIn("CVE-2026-0002", reasons[0])
+        self.assertEqual(out["scan"]["exemptions"], [])
+
     def test_a_negative_database_age_blocks(self):
         cand = image(APP, D2)
         _, reasons = decide(record(cand), scan_of(result(cand), db="2026-11-07T00:00:00Z"), baseline=self.baseline())
@@ -263,7 +299,28 @@ class IgnoreFile(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp, "ignore")
             path.write_text(text, encoding="utf-8")
+            return security_gate.load_ignore(path, today)[0::2]
+
+    def load_all(self, text, today=TODAY):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "ignore")
+            path.write_text(text, encoding="utf-8")
             return security_gate.load_ignore(path, today)
+
+    def test_an_image_entry_is_accepted(self):
+        entries, images, problems = self.load_all("image registry.k8s.io/pause exp:2026-12-01 reason:static binary\n")
+        self.assertEqual((entries, images, problems), ({}, {"registry.k8s.io/pause": "static binary"}, []))
+
+    def test_an_expired_or_incomplete_image_entry_is_a_problem(self):
+        _, images, problems = self.load_all(
+            "image registry.k8s.io/pause exp:2026-11-05 reason:x\n"
+            "image registry.k8s.io/pause exp:2027-02-05 reason:x\n"
+            "image registry.k8s.io/pause exp:2026-12-01\n"
+            "image pause exp:2026-12-01 reason:x\n")
+        self.assertEqual(images, {})
+        self.assertEqual(len(problems), 4)
+        self.assertIn("expired on 2026-11-05", problems[0])
+        self.assertIn("more than 90 days", problems[1])
 
     def test_a_valid_entry_is_accepted(self):
         entries, problems = self.load("# note\n\nCVE-2026-0001 exp:2026-12-01 reason:no fix, not reachable\n")
@@ -332,8 +389,10 @@ class TrivyReport(unittest.TestCase):
 
     def test_a_report_with_no_results_and_no_operating_system_is_an_error(self):
         report = json.loads((FIXTURES / "trivy-empty.json").read_text(encoding="utf-8"))
-        with self.assertRaisesRegex(RuntimeError, "no packages detected"):
-            security_gate.findings_of(report)
+        self.assertEqual(security_gate.findings_of(report), [])
+        self.assertTrue(security_gate.detected_nothing(report))
+        self.assertFalse(security_gate.detected_nothing({"Metadata": {"OS": {"Family": "alpine"}}}))
+        self.assertFalse(security_gate.detected_nothing({"Results": [{"Target": "x"}]}))
 
     def test_a_duplicate_finding_keeps_the_fix_and_the_highest_severity(self):
         def target(**v):
@@ -374,12 +433,12 @@ class Commands(unittest.TestCase):
         path.write_text(json.dumps(data) if not isinstance(data, str) else data, encoding="utf-8")
         return path
 
-    def scan_and_decide(self, rec, db=FRESH_DB, kev=None, **options):
+    def scan_and_decide(self, rec, db=FRESH_DB, kev=None, ignore="", **options):
         rec_path = self.write("record.json", rec)
         scan = self.gate("scan", "--record", rec_path, "--out", self.dir / "scan.json", "--attempts", 1, db=db,
                          **options)
         self.assertEqual(scan.returncode, 0, scan.stderr)
-        ignore = self.write("ignore", "")
+        ignore = self.write("ignore", ignore)
         return self.gate("decide", "--record", rec_path, "--scan", self.dir / "scan.json",
                          "--kev", self.write("kev.json", kev or kev_of("CVE-2000-0001", released="2026-11-05T00:00:00Z")),
                          "--ignore", ignore, "--no-baseline", "--out", self.dir / "out.json",
@@ -419,6 +478,21 @@ class Commands(unittest.TestCase):
     def test_an_image_with_no_packages_detected_blocks_the_run(self):
         res = self.scan_and_decide(record(image(APP, D1)), report="trivy-empty.json")
         self.assertEqual(res.returncode, 1)
+        self.assertIn("no packages detected", res.stdout)
+
+    def test_an_exempt_image_with_no_packages_passes_the_run(self):
+        res = self.scan_and_decide(record(image(APP, D1)), report="trivy-empty.json",
+                                   ignore=f"image {APP} exp:2026-12-01 reason:static binary\n")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        out = json.loads((self.dir / "out.json").read_text(encoding="utf-8"))
+        self.assertEqual(out["scan"]["exemptions"], [{"image": APP, "reason": "static binary"}])
+        self.assertIn(f"{APP}: static binary", res.stdout)
+
+    def test_an_expired_image_exemption_blocks_the_run(self):
+        res = self.scan_and_decide(record(image(APP, D1)), report="trivy-empty.json",
+                                   ignore=f"image {APP} exp:2026-10-01 reason:static binary\n")
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("expired on 2026-10-01", res.stdout)
         self.assertIn("no packages detected", res.stdout)
 
     def test_a_database_download_failure_blocks_the_run(self):
