@@ -557,6 +557,179 @@ If `GITHUB_OUTPUT` is set, the script also writes `needs_approval` and
 `make test-commit` runs `tests/check-manifest-risk.py`, which uses the fixtures
 in `tests/fixtures/manifest-risk/`.
 
+## Stable watch
+
+`.github/workflows/stable-watch.yaml` watches `stable` every day at 20:00 UTC.
+You can also start it by hand. The decisions are in `ci/stable_watch.py`. The
+workflow only sets up the jobs. It uses the gate scan of `ci/security_gate.py`
+and the digest lookups of `ci/promotion_record.py`.
+
+### What a run does
+
+1. The `fetch` job gets the record of the latest published `stable-YYYYMMDD`
+   release. It verifies the attestation with `gh attestation verify`, with the
+   same flags as the promote workflow. It checks that the record is for the
+   commit that `stable` is at.
+2. If no release exists yet, the run stops with a notice: stable has not been
+   promoted yet. Nothing else runs and no issue changes.
+3. The `scan` job rescans every image of the record by its registry digest. It
+   uses the code of `main` and the pinned kube-devenv image. No candidate code
+   runs.
+4. The `resolve` job asks the registries for the digest of every image and
+   chart, and compares each with the record.
+5. The `report` job decides which conditions are active. It opens, updates and
+   closes the issues below. The run is red while a priority issue is open.
+6. The `keepalive` job keeps the workflow enabled. See "Quiet repository".
+
+### The issues
+
+Every issue has the label `stable-watch`. A priority issue also has the label
+`priority`. Each has a hidden marker in its first line. The workflow finds its
+issues by title, marker, label and author (the Actions bot). An issue of
+someone else with the same title is not touched.
+
+| Issue | Opens when | Closes when |
+|---|---|---|
+| Known vulnerabilities in stable | always | never |
+| Priority: an upstream tag or chart changed after review | a registry digest differs from the record | every digest matches again |
+| Priority: a known exploited vulnerability in stable | a finding is on the CISA KEV list | no finding is on the list |
+| Priority: stable is more than 21 days behind main | the oldest commit of `main` that `stable` lacks landed more than 21 days ago | `stable` is not behind by more than 21 days, for example after a promotion |
+| Priority: the daily check of stable is incomplete | a part of the check could not finish, or a result cannot be trusted | every part finished |
+
+The first issue is the rolling issue. The workflow updates its text in place
+each day. It never opens a second one. If you close it, the next run opens it
+again. It shows the scan time, the scanner and database time, the images
+scanned, the counts, the findings that are new since the scan in the record,
+the KEV findings, and the HIGH and CRITICAL findings with their fix versions.
+
+A priority issue is closed with a comment that says why. It is never closed
+without a comment. If the details of an open priority issue change, the
+workflow edits the text and adds a comment.
+
+### Fail closed
+
+A result that is missing is never reported as clean. A condition is active,
+clear or unknown. Unknown means the check could not run. An unknown condition
+keeps its issue as it is, and it opens the incomplete issue.
+
+The scan follows the gate rules. These make it incomplete:
+
+- the Trivy database is older than 48 hours, or the scanner is missing
+- an image has no scan result, or its scan failed
+- Trivy detects nothing in an image that has no `image` entry in the ignore file
+- the KEV file is missing, or older than 21 days
+- an entry of `ci/security-gate.trivyignore` is invalid or expired
+
+A registry error makes the digest check incomplete, not clean. A lookup retries
+five times before it counts as an error. A failed fetch, a failed
+attestation check, a record for another commit than `stable`, a failed lag
+lookup and a `stable` that is not an ancestor of `main` are incomplete too.
+
+### Drift
+
+The workflow resolves each image reference and each chart again. For an image
+it asks the registry for the digest of the reference, as the record builder did.
+For a chart it downloads the archive (or asks for the OCI manifest). It then
+compares the result with the digest in the record.
+
+An entry with `digestSource: pinned` has its digest in the reference. A tag
+cannot move it. The check still asks the registry, so a digest that the
+registry no longer serves shows as an error. The check cannot find a change by
+tag for that entry.
+
+Where several references of the same image shared one digest, the record keeps
+`name@digest` as the reference. The tag is lost, so the check can only verify
+that the registry still serves the digest. It cannot find a change of that tag.
+
+### Stale stable
+
+The lag is the age of the oldest commit on the first-parent line of `main` that
+`stable` lacks. The age counts from the merge time of its pull request. If the
+commit has no pull request, the workflow uses the commit date. The alarm opens
+when the lag is more than 21 days.
+
+### Permissions and secrets
+
+- The top level has `permissions: {}`.
+- `fetch`, `resolve` and `scan` have `contents: read`.
+- `report` has `contents: read` and `issues: write`. It is the only job that
+  writes issues. It has no registry token.
+- `keepalive` has `actions: write` and nothing else.
+- There is no deploy key and no other secret.
+- `resolve` and `scan` log in to Docker Hub with the optional read-only token
+  `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`, as the `gate` job does. This only
+  avoids rate limits. Set both or neither.
+- The actions are pinned to the same commits as in `tiers.yaml`.
+- Text from a registry or a finding is cut to a length limit and escaped
+  (Markdown, HTML and mentions) before it goes into an issue. Issue titles are
+  fixed text. No run block holds an expression with outside data.
+- `resolve` is the one job that does not run in the kube-devenv image. It needs
+  `docker buildx`, which the image does not have. Its script uses only the
+  Python standard library, so it installs no package.
+
+### Quiet repository
+
+GitHub disables a scheduled workflow in a public repository when there is no
+repository activity for 60 days. A repository that only gets a weekly promotion
+and a few Renovate pull requests can reach that state in a quiet period.
+
+The `keepalive` job calls `PUT /repos/{owner}/{repo}/actions/workflows/stable-watch.yaml/enable`
+with the `GITHUB_TOKEN` (permission `actions: write`) on every run. It needs no
+secret and makes no commit. If the call fails, the run shows a warning.
+
+What was verified when this was written:
+
+- The GitHub documentation states the 60-day rule for public repositories.
+- The GitHub REST documentation describes the enable call. It takes the file
+  name and needs the `Actions` write permission.
+- The public action `liskin/gh-workflow-keepalive` uses the same call for the
+  same purpose.
+
+What was not verified: GitHub does not document that this call restarts the
+60 days. Verify it after the first merge. If the workflow is ever disabled,
+run `gh workflow enable stable-watch.yaml` once. A disabled workflow cannot
+enable itself.
+
+### Reading an issue
+
+If a priority issue is open, do these steps:
+
+1. Open the issue and read the table.
+2. If the issue is about drift, find what changed upstream. If the change is
+   not expected, treat it as a possible attack. Do not promote until you know
+   the cause.
+3. If the issue is about a KEV finding, read the advisory. Update the image in
+   `main` and promote it, or add an entry with a reason and an expiry date to
+   `ci/security-gate.trivyignore`.
+4. If the issue is about a stale `stable`, read why the last Promote runs did
+   not pass.
+5. If the issue is about an incomplete check, read the reasons. Fix the cause
+   and start the workflow by hand. An outage clears by itself on the next run.
+
+### Running the parts
+
+`make test-stable-watch` (part of `make test-scripts`) runs
+`tests/check-stable-watch.py`. It uses stand-ins for `gh`, `docker` and `helm`
+and a git repository made in a temporary directory. It also reads the workflow
+file and checks the permissions, the pinned actions, and that no run block
+installs a package or holds an expression.
+
+The live parts need the network:
+
+1. Run `make stable-watch-resolve`. It reads `out/stable/promotion-record.json`
+   and writes `out/resolved.json`. It needs `docker buildx` and `helm`.
+2. Run `make kev-catalog`, then `make stable-watch-scan`. It writes
+   `out/scan-results.json`. It needs `trivy`.
+
+### Known gaps
+
+- The daily scan reads the same image set as the record. It does not see an
+  image that `main` added after the promotion.
+- Code that a container downloads at start is in `notScanned` and is not
+  scanned.
+- The watch does not look at the `stable` branch itself. A push to `stable`
+  that bypasses the promote workflow shows as a record for another commit.
+
 ## Example clusters
 
 Each file in `clusters/` is a root `platform` Application, written the way a

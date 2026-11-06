@@ -76,10 +76,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import yaml
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from render import load_docs  # noqa: E402
 
 SCHEMA = Path(__file__).resolve().parent / "promotion-record.schema.json"
 # 2: digest is always a digest the registry serves; digestSource is registry or
@@ -238,6 +235,7 @@ def read_rendered(rendered):
 def read_rendered_split(rendered):
     """(image references of the other objects, image references of helm test
     objects, the ones composed by an operator, Applications, plugin names)."""
+    from render import load_docs  # imported here: ci/stable_watch.py resolve runs without PyYAML
     images, test_images, composed, apps, plugins = set(), set(), set(), [], set()
     for app_dir in sorted(p for p in Path(rendered).glob("*/*") if p.is_dir()):
         objs = [d for f in sorted(app_dir.glob("*.yaml"))
@@ -255,6 +253,7 @@ def read_rendered_split(rendered):
 def chart_requests(apps, repo_root):
     """{(repository, name, version)} from Application sources and from the
     dependencies of the Chart.yaml files in this repo."""
+    import yaml  # imported here: ci/stable_watch.py resolve runs without PyYAML
     charts = set()
     for app in apps:
         spec = app.get("spec", {})
