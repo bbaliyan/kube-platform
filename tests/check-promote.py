@@ -415,8 +415,9 @@ class Baseline(unittest.TestCase):
 def valid_record(commit=CANDIDATE, baseline=STABLE):
     digest = "sha256:" + "a" * 64
     return {
-        "schemaVersion": 1, "commit": commit,
-        "images": [{"reference": "docker.io/library/redis:7", "digest": digest, "digestSource": "registry", "sources": ["rendered"]}],
+        "schemaVersion": 2, "commit": commit,
+        "images": [{"reference": "docker.io/library/redis:7", "digest": digest, "digestSource": "registry", "sources": ["rendered"],
+                    "runtimeDigests": [], "runtimeDiffers": False}],
         "charts": [{"name": "g", "version": "1.0.0", "repository": "https://h", "digest": digest}],
         "notScanned": [],
         "scanner": {"name": "trivy", "version": "0.60.0", "databaseUpdatedAt": at(0.2)},

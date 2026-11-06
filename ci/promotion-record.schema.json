@@ -6,7 +6,10 @@
   "additionalProperties": false,
   "required": ["schemaVersion", "commit", "images", "charts", "notScanned", "scanner"],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": {
+      "description": "2: digest is always a digest the registry serves; digestSource is registry or pinned; runtimeDigests and runtimeDiffers are new; notScanned has the type test-only. Version 1 records are not valid.",
+      "const": 2
+    },
     "commit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
     "images": {
       "type": "array",
@@ -15,19 +18,32 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["reference", "digest", "digestSource", "sources"],
+        "required": ["reference", "digest", "digestSource", "sources", "runtimeDigests", "runtimeDiffers"],
         "properties": {
           "reference": { "type": "string", "minLength": 1 },
-          "digest": { "$ref": "#/$defs/digest" },
+          "digest": {
+            "description": "A digest that the registry served when the record was built. The security gate scans this digest and no other.",
+            "$ref": "#/$defs/digest"
+          },
           "digestSource": {
-            "description": "runtime: the digest of a running container. registry: what the registry returned for the tag when the record was built, or the digest written in the manifest.",
-            "enum": ["runtime", "registry"]
+            "description": "registry: the registry returned the digest for the tag (the digest of the image index). pinned: the digest is written in the reference, and the registry served it.",
+            "enum": ["registry", "pinned"]
           },
           "sources": {
             "type": "array",
             "minItems": 1,
             "uniqueItems": true,
             "items": { "enum": ["rendered", "runtime"] }
+          },
+          "runtimeDigests": {
+            "description": "The digests that running containers of the kind run reported (imageID). Information only: the node may have loaded a single-platform archive, so the registry may not serve them. Empty if no container used the image.",
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/digest" }
+          },
+          "runtimeDiffers": {
+            "description": "True when a runtime digest is not the digest of this entry.",
+            "type": "boolean"
           }
         }
       }
@@ -54,7 +70,7 @@
         "additionalProperties": false,
         "required": ["type", "name", "reason"],
         "properties": {
-          "type": { "enum": ["grafana-plugin", "unresolved-image"] },
+          "type": { "enum": ["grafana-plugin", "unresolved-image", "test-only"] },
           "name": { "type": "string", "minLength": 1 },
           "reason": { "type": "string", "minLength": 1 }
         }

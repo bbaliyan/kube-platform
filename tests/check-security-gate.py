@@ -36,11 +36,12 @@ APP, LIB = "quay.io/example/app", "docker.io/library/lib"
 
 
 def image(repo, digest):
-    return {"reference": f"{repo}:1.0", "digest": digest, "digestSource": "registry", "sources": ["rendered"]}
+    return {"reference": f"{repo}:1.0", "digest": digest, "digestSource": "registry", "sources": ["rendered"],
+            "runtimeDigests": [], "runtimeDiffers": False}
 
 
 def record(*images, commit="a" * 40):
-    return {"schemaVersion": 1, "commit": commit, "images": list(images), "charts": [], "notScanned": [],
+    return {"schemaVersion": 2, "commit": commit, "images": list(images), "charts": [], "notScanned": [],
             "scanner": {"name": None, "version": None, "databaseUpdatedAt": None}}
 
 
@@ -366,6 +367,23 @@ class IgnoreFile(unittest.TestCase):
         entries, problems = self.load("CVE-2026-0001 exp:2027-02-05 reason:x\n")
         self.assertEqual(entries, {})
         self.assertIn("more than 90 days", problems[0])
+
+    def test_the_ignore_file_of_the_repo_exempts_busybox_with_a_reason_and_a_short_expiry(self):
+        _, images, problems = security_gate.load_ignore(ROOT / "ci/security-gate.trivyignore", TODAY)
+        self.assertEqual(problems, [])
+        self.assertTrue(images["docker.io/library/busybox"])
+        text = (ROOT / "ci/security-gate.trivyignore").read_text(encoding="utf-8")
+        expiry = next(l for l in text.splitlines() if "library/busybox" in l).split("exp:")[1].split()[0]
+        self.assertLessEqual((date.fromisoformat(expiry) - TODAY).days, 90)
+
+    def test_the_busybox_exemption_matches_a_digest_reference_of_the_record(self):
+        busybox = {"reference": "docker.io/library/busybox@sha256:" + "5" * 64, "digest": "sha256:" + "5" * 64,
+                   "digestSource": "registry", "sources": ["rendered", "runtime"],
+                   "runtimeDigests": [], "runtimeDiffers": False}
+        _, images, _ = security_gate.load_ignore(ROOT / "ci/security-gate.trivyignore", TODAY)
+        out, reasons = decide(record(busybox), scan_of(empty_result(busybox)), baseline=None, exempt=images)
+        self.assertEqual(reasons, [])
+        self.assertEqual([e["image"] for e in out["scan"]["exemptions"]], ["docker.io/library/busybox"])
 
     def test_the_ignore_file_of_the_repo_passes(self):
         res = subprocess.run([sys.executable, "-I", str(GATE), "check-ignore", str(ROOT / "ci/security-gate.trivyignore")],

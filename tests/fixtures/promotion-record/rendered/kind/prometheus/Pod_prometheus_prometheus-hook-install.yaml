@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: prometheus-hook-install
+  namespace: prometheus
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+spec:
+  containers:
+    - name: init
+      image: docker.io/library/alpine:3.23
