@@ -17,6 +17,7 @@ the record builder (ci/promotion_record.py) for the digest lookups.
     ci/stable_watch.py report  --fetch F --record R --scan S --kev K --resolved D --lag L \
                                --ignore ci/security-gate.trivyignore --out state.json [--summary S.md]
     ci/stable_watch.py sync    --state state.json --repo OWNER/NAME
+    ci/stable_watch.py watchdog --repo OWNER/NAME
 
 The steps run in separate jobs, so a job holds only what it needs:
   fetch    gets the record of the latest published `stable-YYYYMMDD` release and
@@ -140,8 +141,10 @@ def cap(text, limit):
 
 def safe(text, limit=FIELD_LIMIT):
     """Text from outside the repository, safe in a Markdown table cell, in HTML
-    and as a mention."""
-    return escape_text(cap(text, limit))
+    and as a mention. A bare URL is broken so GitHub does not link it."""
+    text = cap(text, limit).replace("://", ":\u200b//")
+    text = re.sub(r"(?i)\bwww\.", lambda m: m.group(0)[:3] + "\u200b.", text)
+    return escape_text(text)
 
 
 def table(headers, rows):
@@ -157,6 +160,10 @@ def gh(*args):
         tail = " | ".join(res.stderr.strip().splitlines()[-3:]) or f"gh {args[0]} exited {res.returncode}"
         raise RuntimeError(cap(tail, ERROR_LIMIT))
     return res.stdout
+
+
+class Urgent(RuntimeError):
+    """A fetch failure that is not an outage: the record failed verification or does not fit stable."""
 
 
 def cmd_fetch(args):
@@ -176,21 +183,25 @@ def cmd_fetch(args):
             gh("release", "download", tag, "--repo", args.repo, "--pattern", "promotion-record.json",
                "--dir", str(out), "--clobber")
             path = out / "promotion-record.json"
-            gh("attestation", "verify", str(path), "--repo", args.repo,
-               "--signer-workflow", f"{args.repo}/{SIGNER_WORKFLOW}", "--source-ref", "refs/heads/main",
-               "--cert-oidc-issuer", ATTEST_ISSUER)
+            try:
+                gh("attestation", "verify", str(path), "--repo", args.repo,
+                   "--signer-workflow", f"{args.repo}/{SIGNER_WORKFLOW}", "--source-ref", "refs/heads/main",
+                   "--cert-oidc-issuer", ATTEST_ISSUER)
+            except RuntimeError as e:
+                raise Urgent(f"the attestation did not verify: {e}") from e
             record = load_json(path)
             problems = validate_record(record)
             if problems:
-                raise RuntimeError("the record does not match its schema: " + cap(problems[0], ERROR_LIMIT))
+                raise Urgent("the record does not match its schema: " + cap(problems[0], ERROR_LIMIT))
             stable = args.stable_sha or promote_run(
                 ["git", "-C", args.repo_root, "rev-parse", "--verify", f"{args.stable_ref}^{{commit}}"]).stdout.strip()
             if record["commit"] != stable:
-                raise RuntimeError(f"the record of {tag} is for {record['commit']}, but stable is {stable}. "
+                raise Urgent(f"the record of {tag} is for {record['commit']}, but stable is {stable}. "
                                    "stable moved without a release")
             meta.update(status="ok", commit=record["commit"])
     except (RuntimeError, OSError, ValueError, StopIteration, SystemExit) as e:
-        meta.update(status="failed", reason=cap(e.code if isinstance(e, SystemExit) else e, ERROR_LIMIT))
+        meta.update(status="failed", urgent=isinstance(e, Urgent),
+                    reason=cap(e.code if isinstance(e, SystemExit) else e, ERROR_LIMIT))
         # A record that failed verification must not reach another job.
         (out / "promotion-record.json").unlink(missing_ok=True)
     write_json(out / "fetch.json", meta)
@@ -228,14 +239,29 @@ def resolve_all(record, lookup_image, lookup_chart, workers=4):
         }
 
 
+def primary_digest(pr, ref):
+    """The digest from the registry the reference names, and no other. The record
+    builder falls back to mirrors for Docker Official Images; a mirror is not the
+    registry the cluster pulls from, so here a failed primary lookup is an error."""
+    out = pr.run(["docker", "buildx", "imagetools", "inspect", ref, "--format", "{{.Manifest.Digest}}"])
+    if not DIGEST.match(out):
+        raise RuntimeError(f"unexpected digest output {out!r}")
+    return out
+
+
+def primary_chart_digest(pr, c):
+    if c["repository"].startswith("oci://"):
+        return primary_digest(pr, f"{c['repository'][6:].rstrip('/')}/{c['name']}:{c['version'].replace('+', '_')}")
+    return pr.chart_digest(c["repository"], c["name"], c["version"])
+
+
 def cmd_resolve(args):
     import promotion_record as pr
     record = load_json(args.record)
     result = resolve_all(
         record,
-        lambda e: pr.retry(lambda: pr.registry_digest(e["reference"]), e["reference"]),
-        lambda c: pr.retry(lambda: pr.chart_digest(c["repository"], c["name"], c["version"]),
-                           f"chart {c['name']} {c['version']}"))
+        lambda e: pr.retry(lambda: primary_digest(pr, e["reference"]), e["reference"]),
+        lambda c: pr.retry(lambda: primary_chart_digest(pr, c), f"chart {c['name']} {c['version']}"))
     result["resolvedAt"] = iso(datetime.now(timezone.utc))
     write_json(args.out, result)
     failed = [x for x in result["images"] + result["charts"] if x["error"]]
@@ -248,7 +274,7 @@ def cmd_resolve(args):
 def lag_of(repo_root, repo, head, stable_ref, now):
     """How far `stable` is behind `main`: the age of the oldest first-parent
     commit of main that stable lacks, measured from the time it landed (the
-    merge time of its pull request; the commit date if it has none)."""
+    merge time of its pull request; unknown if it has none)."""
     git = lambda *a: promote_run(["git", "-C", repo_root, *a]).stdout.strip()  # noqa: E731
     stable = git("rev-parse", "--verify", f"{stable_ref}^{{commit}}")
     result = {"stableSha": stable, "headSha": head, "state": "unknown", "days": None, "oldestCommit": None,
@@ -261,9 +287,12 @@ def lag_of(repo_root, repo, head, stable_ref, now):
     if not shas:
         return {**result, "error": "stable is behind main, but no commit is on the first-parent line"}
     oldest = shas[-1]
+    # A commit with no merged pull request has an unknown landing time. The committer
+    # date is chosen by the author, so it is not used (promote.landed_at does the same).
     landed, source = landed_at(repo, oldest, "main"), "pull request merge"
     if not landed:
-        landed, source = git("show", "-s", "--format=%cI", oldest), "commit date"
+        return {**result, "oldestCommit": oldest,
+                "error": f"the oldest commit that stable lacks ({oldest}) has no merged pull request, so its age is unknown"}
     days = (now - parse_time(landed)).total_seconds() / 86400
     return {**result, "state": "behind", "days": round(days, 2), "oldestCommit": oldest,
             "landedAt": iso(parse_time(landed)), "landedSource": source}
@@ -327,7 +356,7 @@ def rolling_body(ctx, groups, complete, now):
         lines.append("**Status: complete.**")
     else:
         lines.append(f"**Status: INCOMPLETE. Do not read the lists below as clean.** The reasons are in the issue "
-                     f"\"{KINDS['incomplete'][0]}\".")
+                     f"\"{KINDS['incomplete'][0]}\" and in the run log. That issue opens after the second incomplete run in a row.")
     lines += [""] + table(["", ""], [
         ["Release", f"`{safe(meta['tag'])}`, published {safe(meta.get('publishedAt') or 'unknown')}"],
         ["stable commit", f"`{safe(record['commit'])}`"],
@@ -414,7 +443,7 @@ def evaluate(fetch, record, scan_data, scan_error, kev, resolved, resolved_error
         problems.append("the record of stable could not be fetched or verified: " + cap(reason, ERROR_LIMIT))
         for kind in ("rolling", "drift", "kev"):
             set_condition(kind, "unknown")
-        return finish(conditions, problems, now)
+        return finish(conditions, problems, now, fetch.get("urgent"))
 
     ctx = {"record": record, "fetch": fetch}
 
@@ -495,7 +524,7 @@ def evaluate(fetch, record, scan_data, scan_error, kev, resolved, resolved_error
     return finish(conditions, problems, now)
 
 
-def finish(conditions, problems, now):
+def finish(conditions, problems, now, urgent=False):
     if problems:
         body = [marker("incomplete"),
                 "The daily check of `stable` could not finish, or a result cannot be trusted. A result that is missing is "
@@ -512,6 +541,7 @@ def finish(conditions, problems, now):
     else:
         conditions["incomplete"] = {"state": "clear", "title": KINDS["incomplete"][0], "body": None,
                                     "clearNote": "Every part of the daily check finished and its results can be trusted."}
+    conditions["incomplete"]["immediate"] = bool(urgent)
     priority = sorted(k for k, c in conditions.items() if KINDS[k][1] and c["state"] == "active")
     return {"generatedAt": iso(now), "conditions": conditions, "problems": problems, "priority": priority}
 
@@ -590,7 +620,7 @@ class Tracker:
         return True
 
     def existing(self):
-        out = self.call("issue", "list", "--label", LABEL, "--state", "all", "--limit", "200",
+        out = self.call("issue", "list", "--search", "stable in:title", "--state", "all", "--limit", "1000",
                         "--json", "number,title,state,body,author")
         if out is None:
             return None
@@ -598,8 +628,9 @@ class Tracker:
         for issue in json.loads(out):
             login = (issue.get("author") or {}).get("login", "")
             for kind, (title, _) in KINDS.items():
-                if (login in BOT_LOGINS and issue["title"] == title
-                        and (issue.get("body") or "").startswith(marker(kind))):
+                # Author and exact title decide. The marker in the body is information only: a
+                # hand-edited body must not make the next run open a second issue.
+                if login in BOT_LOGINS and issue["title"] == title:
                     found[kind].append(issue)
         for issues in found.values():
             issues.sort(key=lambda i: i["number"])
@@ -630,6 +661,24 @@ class Tracker:
             self.call("issue", "comment", str(number), text=comment)
 
 
+STREAK = re.compile(r"<!-- stable-watch:streak=(\d+) -->")
+STREAK_TO_OPEN = 2
+
+
+def streak_line(n):
+    return f"<!-- stable-watch:streak={n} -->"
+
+
+def streak_of(issue):
+    m = STREAK.search((issue or {}).get("body") or "")
+    return int(m[1]) if m else 0
+
+
+def with_streak(lines, n):
+    """The issue lines with the streak marker as the second line."""
+    return [lines[0], streak_line(n)] + [l for l in lines[1:] if not STREAK.fullmatch(l)]
+
+
 def sync(state, tracker, now):
     if not state["conditions"]:
         return
@@ -638,6 +687,25 @@ def sync(state, tracker, now):
     found = tracker.existing()
     if found is None:
         return
+    # The incomplete issue opens after STREAK_TO_OPEN incomplete runs in a row, or at
+    # once for an urgent cause. The count lives in the rolling issue, which exists to
+    # carry state between runs. An unknown result never closes anything.
+    rolling_issues = found["rolling"]
+    rolling_issue = ([i for i in rolling_issues if i["state"] == "OPEN"] or rolling_issues[-1:] or [None])[0]
+    incomplete = state["conditions"]["incomplete"]
+    streak = streak_of(rolling_issue) + 1 if incomplete["state"] == "active" else 0
+    if incomplete["state"] == "active" and streak < STREAK_TO_OPEN and not incomplete.get("immediate"):
+        incomplete["state"] = "unknown"
+    rolling = state["conditions"].get("rolling")
+    if rolling and rolling["state"] == "active":
+        rolling["body"] = with_streak(rolling["body"], streak)
+    elif rolling_issue is None and streak:
+        rolling.update(state="active", body=[marker("rolling"), streak_line(streak),
+                       "No complete scan has run yet. The reasons are in the run log of the Stable watch workflow."])
+    elif rolling_issue is not None and streak != streak_of(rolling_issue):
+        body = STREAK.sub(streak_line(streak), rolling_issue["body"]) if STREAK.search(rolling_issue["body"]) \
+            else "\n".join(with_streak(rolling_issue["body"].splitlines(), streak))
+        tracker.update("rolling", rolling_issue["number"], body)
     for kind, cond in state["conditions"].items():
         issues = found[kind]
         open_ones = [i for i in issues if i["state"] == "OPEN"]
@@ -665,6 +733,32 @@ def sync(state, tracker, now):
             tracker.update(kind, first["number"], text, comment=f"The details changed on {iso(now)}. See the issue text.")
         for issue in extra:
             tracker.close(kind, issue["number"], f"Closed as a duplicate of #{first['number']}.")
+
+
+def cmd_watchdog(args):
+    """Fail when the newest run of the Stable watch workflow is older than --max-days.
+    It runs from a workflow that a quiet repository cannot disable. It skips, with a
+    notice, when stable has no release yet, the same rule as the watch itself."""
+    now = now_from(args.now)
+    try:
+        releases = json.loads(gh("release", "list", "--repo", args.repo, "--limit", "100",
+                                 "--json", "tagName,isDraft,isPrerelease,publishedAt"))
+        if not pick_baseline_tag(releases):
+            print("::notice::stable has not been promoted yet, so the Stable watch is not expected to run")
+            return 0
+        runs = json.loads(gh("run", "list", "--repo", args.repo, "--workflow", args.workflow, "--limit", "5",
+                             "--json", "createdAt,status,conclusion,event"))
+    except (RuntimeError, ValueError) as e:
+        print(f"::error::the watchdog could not read the runs: {e}", file=sys.stderr)
+        return 1
+    newest = max((parse_time(r["createdAt"]) for r in runs), default=None)
+    if newest is None or now - newest > timedelta(days=args.max_days):
+        seen = iso(newest) if newest else "never"
+        print(f"::error::the Stable watch has not run for more than {args.max_days} days (last run: {seen}). "
+              "GitHub may have disabled the schedule. Enable the workflow and start it by hand.", file=sys.stderr)
+        return 1
+    print(f"the newest Stable watch run is from {iso(newest)}")
+    return 0
 
 
 def cmd_sync(args):
@@ -709,13 +803,18 @@ def main():
     p.add_argument("--out", required=True)
     p.add_argument("--summary")
     p.add_argument("--now", help="ISO time, for tests")
+    w = sub.add_parser("watchdog")
+    w.add_argument("--repo", required=True)
+    w.add_argument("--workflow", default="stable-watch.yaml")
+    w.add_argument("--max-days", type=float, default=2)
+    w.add_argument("--now", help="ISO time, for tests")
     s = sub.add_parser("sync")
     s.add_argument("--state", required=True)
     s.add_argument("--repo", required=True)
     s.add_argument("--now", help="ISO time, for tests")
     args = ap.parse_args()
     sys.exit({"fetch": cmd_fetch, "resolve": cmd_resolve, "lag": cmd_lag, "report": cmd_report,
-              "sync": cmd_sync}[args.cmd](args))
+              "sync": cmd_sync, "watchdog": cmd_watchdog}[args.cmd](args))
 
 
 if __name__ == "__main__":

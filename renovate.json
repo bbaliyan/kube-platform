@@ -70,7 +70,15 @@
         ".github/workflows/promote.yaml",
         ".github/workflows/promote-candidate.yaml",
         "ci/promote*",
-        "ci/requirements-promote.*"
+        "ci/requirements-promote.*",
+        ".github/workflows/stable-watch.yaml",
+        "ci/stable_watch.py",
+        "ci/security_gate.py",
+        "ci/security-gate.trivyignore",
+        "ci/manifest_risk.py",
+        "ci/registry-allowlist.yaml",
+        "ci/promotion_record.py",
+        "ci/promotion-record.schema.json"
       ],
       "automerge": false
     }

@@ -783,7 +783,10 @@ class WorkflowRules(unittest.TestCase):
         rules = [r for r in config["packageRules"] if "matchFileNames" in r]
         self.assertEqual(len(rules), 1)
         self.assertIs(rules[0]["automerge"], False)
-        for path in (".github/workflows/promote.yaml", ".github/workflows/promote-candidate.yaml"):
+        for path in (".github/workflows/promote.yaml", ".github/workflows/promote-candidate.yaml",
+                     ".github/workflows/stable-watch.yaml", "ci/stable_watch.py", "ci/security_gate.py",
+                     "ci/security-gate.trivyignore", "ci/manifest_risk.py", "ci/registry-allowlist.yaml",
+                     "ci/promotion_record.py", "ci/promotion-record.schema.json"):
             self.assertIn(path, rules[0]["matchFileNames"])
         self.assertIn("pip-compile", config["enabledManagers"])
 

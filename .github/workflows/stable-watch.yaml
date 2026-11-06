@@ -218,7 +218,9 @@ jobs:
   # without repository activity. Enabling a workflow that is already enabled
   # counts as activity and restarts the 60 days. The call needs only
   # actions: write, no secret and no commit. It runs apart from the
-  # other jobs, so a failure elsewhere never skips it. See ci/README.md.
+  # other jobs, so a failure elsewhere never skips it. A failed call fails the job,
+  # so the run is red. The watchdog job of tiers.yaml checks that this workflow
+  # keeps running. See ci/README.md.
   keepalive:
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
@@ -229,6 +231,4 @@ jobs:
       - name: Enable this workflow again
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api --method PUT "repos/$GITHUB_REPOSITORY/actions/workflows/stable-watch.yaml/enable" \
-            || echo "::warning::could not enable the workflow again; it can be disabled after 60 days without activity"
+        run: gh api --method PUT "repos/$GITHUB_REPOSITORY/actions/workflows/stable-watch.yaml/enable"

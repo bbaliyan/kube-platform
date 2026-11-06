@@ -571,7 +571,8 @@ and the digest lookups of `ci/promotion_record.py`.
    same flags as the promote workflow. It checks that the record is for the
    commit that `stable` is at.
 2. If no release exists yet, the run stops with a notice: stable has not been
-   promoted yet. Nothing else runs and no issue changes.
+   promoted yet. Nothing else runs and no issue changes. With no release there
+   is no stale alarm either, even if `stable` is far behind `main`.
 3. The `scan` job rescans every image of the record by its registry digest. It
    uses the code of `main` and the pinned kube-devenv image. No candidate code
    runs.
@@ -594,7 +595,7 @@ someone else with the same title is not touched.
 | Priority: an upstream tag or chart changed after review | a registry digest differs from the record | every digest matches again |
 | Priority: a known exploited vulnerability in stable | a finding is on the CISA KEV list | no finding is on the list |
 | Priority: stable is more than 21 days behind main | the oldest commit of `main` that `stable` lacks landed more than 21 days ago | `stable` is not behind by more than 21 days, for example after a promotion |
-| Priority: the daily check of stable is incomplete | a part of the check could not finish, or a result cannot be trusted | every part finished |
+| Priority: the daily check of stable is incomplete | a part of the check could not finish, or a result cannot be trusted, in 2 runs in a row (at once if the attestation fails or the record does not fit `stable`) | every part finished |
 
 The first issue is the rolling issue. The workflow updates its text in place
 each day. It never opens a second one. If you close it, the next run opens it
@@ -620,6 +621,13 @@ The scan follows the gate rules. These make it incomplete:
 - the KEV file is missing, or older than 21 days
 - an entry of `ci/security-gate.trivyignore` is invalid or expired
 
+The rolling issue carries a hidden count of the incomplete runs in a row. One
+outage on one night opens no issue, but the run is still red. A run that is
+complete sets the count to 0. A failed attestation, an invalid record and a
+record for another commit than `stable` are not outages, so they open the
+incomplete issue at once. A KEV finding and drift always open their issues at
+once.
+
 A registry error makes the digest check incomplete, not clean. A lookup retries
 five times before it counts as an error. A failed fetch, a failed
 attestation check, a record for another commit than `stable`, a failed lag
@@ -628,7 +636,10 @@ lookup and a `stable` that is not an ancestor of `main` are incomplete too.
 ### Drift
 
 The workflow resolves each image reference and each chart again. For an image
-it asks the registry for the digest of the reference, as the record builder did.
+it asks the registry that the reference names, and no other. The record builder
+falls back to a mirror for some Docker Official Images. The watch does not: if
+the primary lookup fails, the digest is unresolved and the check is incomplete.
+It is never drift and never clean.
 For a chart it downloads the archive (or asks for the OCI manifest). It then
 compares the result with the digest in the record.
 
@@ -645,8 +656,9 @@ that the registry still serves the digest. It cannot find a change of that tag.
 
 The lag is the age of the oldest commit on the first-parent line of `main` that
 `stable` lacks. The age counts from the merge time of its pull request. If the
-commit has no pull request, the workflow uses the commit date. The alarm opens
-when the lag is more than 21 days.
+commit has no merged pull request, its age is unknown, because the author of a
+push chooses the commit date. The check is then incomplete and the alarm does
+not open. The alarm opens when the lag is more than 21 days.
 
 ### Permissions and secrets
 
@@ -661,7 +673,7 @@ when the lag is more than 21 days.
   avoids rate limits. Set both or neither.
 - The actions are pinned to the same commits as in `tiers.yaml`.
 - Text from a registry or a finding is cut to a length limit and escaped
-  (Markdown, HTML and mentions) before it goes into an issue. Issue titles are
+  (Markdown, HTML, mentions and bare URLs) before it goes into an issue. Issue titles are
   fixed text. No run block holds an expression with outside data.
 - `resolve` is the one job that does not run in the kube-devenv image. It needs
   `docker buildx`, which the image does not have. Its script uses only the
@@ -675,7 +687,7 @@ and a few Renovate pull requests can reach that state in a quiet period.
 
 The `keepalive` job calls `PUT /repos/{owner}/{repo}/actions/workflows/stable-watch.yaml/enable`
 with the `GITHUB_TOKEN` (permission `actions: write`) on every run. It needs no
-secret and makes no commit. If the call fails, the run shows a warning.
+secret and makes no commit. If the call fails, the job fails and the run is red.
 
 What was verified when this was written:
 
@@ -685,10 +697,20 @@ What was verified when this was written:
 - The public action `liskin/gh-workflow-keepalive` uses the same call for the
   same purpose.
 
-What was not verified: GitHub does not document that this call restarts the
-60 days. Verify it after the first merge. If the workflow is ever disabled,
-run `gh workflow enable stable-watch.yaml` once. A disabled workflow cannot
-enable itself.
+What is not proven: GitHub does not document that this call restarts the
+60 days. Treat the reset as unproven. The proof is the watchdog.
+
+The `stable-watch-alive` job in `tiers.yaml` is the watchdog. It runs on every
+push to `main` (not on pull requests), and it is not a required check. A push
+workflow is not disabled by inactivity. The job has `contents: read` and
+`actions: read`. It runs `make stable-watch-watchdog`, which fails with an
+error if the newest Stable watch run is older than 2 days. If `stable` has no
+release yet, it skips with a notice. If it fails, do these steps:
+
+1. Run `gh workflow enable stable-watch.yaml`.
+2. Start the Stable watch workflow by hand.
+
+A disabled workflow cannot enable itself.
 
 ### Reading an issue
 

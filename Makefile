@@ -229,3 +229,10 @@ stable-watch-report:
 	python3 ci/stable_watch.py report --fetch out/stable/fetch.json --record "$(WATCH_RECORD)" \
 		--scan out/scan/scan-results.json --kev out/scan/kev.json --resolved out/resolved/resolved.json \
 		--lag out/lag.json --ignore ci/security-gate.trivyignore --out out/state.json --summary out/summary.md
+
+# stable-watch-watchdog fails when the newest Stable watch run is older than 2
+# days. tiers.yaml runs it on every push to main. It needs GH_TOKEN and
+# GITHUB_REPOSITORY.
+.PHONY: stable-watch-watchdog
+stable-watch-watchdog:
+	python3 ci/stable_watch.py watchdog --repo "$$GITHUB_REPOSITORY"

@@ -38,7 +38,7 @@ if group == "label" and verb == "create":
         state["labels"].append(args[2])
 elif group == "issue" and verb == "list":
     wanted = opt("--label")
-    items = [i for i in state["issues"] if wanted in i["labels"]]
+    items = [i for i in state["issues"] if wanted is None or wanted in i["labels"]]
     print(json.dumps([{k: i[k] for k in ("number", "title", "state", "body", "author")} for i in items]))
 elif group == "issue" and verb == "create":
     missing = [l for l in opt("--label", True) if l not in state["labels"]]
@@ -62,6 +62,8 @@ elif group == "release" and verb == "list":
 elif group == "release" and verb == "download":
     src = Path(os.environ["STUB_RELEASE_FILES"]) / args[2] / opt("--pattern")
     shutil.copy(src, Path(opt("--dir")) / opt("--pattern"))
+elif group == "run" and verb == "list":
+    print(Path(os.environ["STUB_RUNS"]).read_text())
 elif group == "api":
     print(Path(os.environ["STUB_PULLS"]).read_text())
 elif group == "attestation" and verb == "verify":

@@ -293,6 +293,71 @@ class Scan(unittest.TestCase):
             self.assertNotIn(raw, body)
 
 
+class Escaping(unittest.TestCase):
+    def test_bare_urls_are_broken(self):
+        for raw in ("see https://evil.example/x", "go to www.evil.example", "WWW.EVIL.EXAMPLE and ftp://a.b/c"):
+            text = watch.safe(raw)
+            self.assertNotRegex(text, r"(?i)[a-z]+://")
+            self.assertNotRegex(text, r"(?i)\bwww\.")
+        self.assertEqual(watch.safe("plain text 1.2.3"), "plain text 1.2.3")
+
+    def test_a_url_in_a_registry_error_does_not_reach_an_issue_as_a_link(self):
+        r = evaluate(resolved=resolved_of(make_record(), errors={f"{APP}:1.0": "GET https://evil.example/pay failed"}))
+        self.assertNotIn("https://", "\n".join(r["conditions"]["incomplete"]["body"]))
+
+
+class GateWording(unittest.TestCase):
+    def test_the_kev_reason_text_that_evaluate_filters_on_is_the_gate_text(self):
+        import security_gate
+        record = make_record()
+        scan = scan_of(record, {D1: [finding(KEV_ID, severity="LOW", fixed=None)]})
+        _, reasons = security_gate.decide(record, scan, kev_of(KEV_ID), {}, [], None, NOW, {})
+        self.assertIn(f"{KEV_ID} in {APP} is on the CISA KEV list", reasons)
+
+
+class Watchdog(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.env = {"PATH": f"{STUBS}{os.pathsep}{os.environ['PATH']}", "STUB_GH_STATE": str(self.dir),
+                    "STUB_RELEASES": str(self.dir / "releases.json"), "STUB_RUNS": str(self.dir / "runs.json")}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def watchdog(self, releases, runs):
+        (self.dir / "releases.json").write_text(json.dumps(releases))
+        (self.dir / "runs.json").write_text(json.dumps(runs))
+        return run_tool("watchdog", "--repo", REPO, "--now", NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), env=self.env)
+
+    def run_at(self, days):
+        return {"createdAt": (NOW - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ"), "status": "completed",
+                "conclusion": "success", "event": "schedule"}
+
+    RELEASE = [{"tagName": TAG, "isDraft": False, "isPrerelease": False, "publishedAt": "2026-11-15T22:30:00Z"}]
+
+    def test_a_recent_run_passes(self):
+        res = self.watchdog(self.RELEASE, [self.run_at(5), self.run_at(1.2)])
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+    def test_a_run_older_than_2_days_fails(self):
+        res = self.watchdog(self.RELEASE, [self.run_at(2.5), self.run_at(3.5)])
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("::error::", res.stderr)
+
+    def test_no_run_at_all_fails(self):
+        self.assertEqual(self.watchdog(self.RELEASE, []).returncode, 1)
+
+    def test_no_release_skips_with_a_notice(self):
+        res = self.watchdog([], [])
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("::notice::", res.stdout)
+
+    def test_a_failing_gh_fails(self):
+        res = run_tool("watchdog", "--repo", REPO, env={**self.env, "STUB_RELEASES": str(self.dir / "none.json")})
+        self.assertEqual(res.returncode, 1)
+
+
 class Stale(unittest.TestCase):
     def test_it_opens_above_21_days(self):
         r = evaluate(lag=lag_of(21.5))
@@ -415,7 +480,9 @@ class Sync(unittest.TestCase):
 
     def test_an_unknown_result_does_not_close_an_issue(self):
         self.sync(evaluate(lag=lag_of(30)))
-        self.sync(evaluate(lag={"state": "unknown", "days": None, "error": "gh failed"}))
+        unknown = {"state": "unknown", "days": None, "error": "gh failed"}
+        self.sync(evaluate(lag=unknown))
+        self.sync(evaluate(lag=unknown))
         self.assertEqual(self.by_kind("stale")[0]["state"], "OPEN")
         incomplete = self.by_kind("incomplete")
         self.assertEqual(len(incomplete), 1)
@@ -452,6 +519,66 @@ class Sync(unittest.TestCase):
         self.sync(evaluate(lag=lag_of(30)))
         open_ones = [i for i in self.by_kind("stale") if i["state"] == "OPEN"]
         self.assertEqual([i["number"] for i in open_ones], [state["issues"][0]["number"]])
+
+    def test_a_hand_edited_body_does_not_create_a_duplicate(self):
+        self.sync(evaluate())
+        state = json.loads((self.dir / "state.json").read_text())
+        state["issues"][0]["body"] = "I rewrote this."
+        (self.dir / "state.json").write_text(json.dumps(state))
+        self.sync(evaluate())
+        self.sync(evaluate(lag=lag_of(30)))
+        state = json.loads((self.dir / "state.json").read_text())
+        self.sync(evaluate(lag=lag_of(31)))
+        state["issues"][-1]["body"] = "edited too"
+        (self.dir / "state.json").write_text(json.dumps(state))
+        self.sync(evaluate(lag=lag_of(32)))
+        self.assertEqual(len(self.by_kind("rolling")), 1)
+        self.assertEqual(len(self.by_kind("stale")), 1)
+
+    def test_the_incomplete_issue_opens_after_two_incomplete_runs_in_a_row(self):
+        bad = evaluate(resolved=resolved_of(make_record(), errors={"web": "timeout"}))
+        self.assertEqual(self.sync(bad), 1, "an incomplete run is still red")
+        self.assertEqual(self.by_kind("incomplete"), [])
+        self.assertIn("streak=1", self.by_kind("rolling")[0]["body"])
+        self.sync(bad)
+        self.assertEqual(len(self.by_kind("incomplete")), 1)
+        self.assertIn("streak=2", self.by_kind("rolling")[0]["body"])
+        self.sync(evaluate())
+        self.assertIn("streak=0", self.by_kind("rolling")[0]["body"])
+        self.assertEqual(self.by_kind("incomplete")[0]["state"], "CLOSED")
+        self.assertTrue(self.by_kind("incomplete")[0]["comments"])
+
+    def test_one_incomplete_run_between_clean_runs_never_opens_it(self):
+        bad = evaluate(resolved=resolved_of(make_record(), errors={"web": "timeout"}))
+        for result in (bad, evaluate(), bad, evaluate(), bad):
+            self.sync(result)
+        self.assertEqual(self.by_kind("incomplete"), [])
+
+    def test_a_streak_is_kept_when_the_rolling_issue_cannot_be_updated(self):
+        down = evaluate(scan=None)
+        self.sync(down)
+        rolling = self.by_kind("rolling")
+        self.assertEqual(len(rolling), 1, "a stub carries the count")
+        self.assertIn("streak=1", rolling[0]["body"])
+        self.sync(down)
+        self.assertEqual(len(self.by_kind("rolling")), 1)
+        self.assertIn("streak=2", self.by_kind("rolling")[0]["body"])
+        self.assertEqual(len(self.by_kind("incomplete")), 1)
+
+    def test_a_failed_attestation_opens_the_incomplete_issue_at_once(self):
+        fetch = {"status": "failed", "urgent": True, "reason": "the attestation did not verify", "tag": TAG,
+                 "publishedAt": None}
+        r = watch.evaluate(fetch, None, None, "x", None, None, "x", lag_of(None), None, IGNORE, NOW)
+        self.sync(r)
+        self.assertEqual(len(self.by_kind("incomplete")), 1)
+
+    def test_an_outage_of_the_fetch_waits_for_the_second_run(self):
+        fetch = {"status": "failed", "urgent": False, "reason": "gh: HTTP 502", "tag": "", "publishedAt": None}
+        r = watch.evaluate(fetch, None, None, "x", None, None, "x", lag_of(None), None, IGNORE, NOW)
+        self.sync(r)
+        self.assertEqual(self.by_kind("incomplete"), [])
+        self.sync(r)
+        self.assertEqual(len(self.by_kind("incomplete")), 1)
 
     def test_no_release_touches_nothing(self):
         state = self.dir / "none.json"
@@ -514,16 +641,25 @@ class Fetch(unittest.TestCase):
                      "--source-ref refs/heads/main", "--cert-oidc-issuer https://token.actions.githubusercontent.com"):
             self.assertIn(part, verify)
 
+    def test_an_outage_is_not_urgent(self):
+        self.releases.write_text("[]")
+        out = self.dir / "out"
+        run_tool("fetch", "--repo", REPO, "--out-dir", out, "--stable-sha", STABLE,
+                 env={**self.env, "STUB_RELEASES": str(self.dir / "missing.json")})
+        self.assertIs(json.loads((out / "fetch.json").read_text())["urgent"], False)
+
     def test_a_failed_attestation_is_failed_and_leaves_no_record(self):
         res, meta, out = self.fetch([self.release()], make_record(), env={"STUB_ATTEST": "fail"})
         self.assertEqual(res.returncode, 0)
         self.assertEqual(meta["status"], "failed")
+        self.assertIs(meta["urgent"], True)
         self.assertIn("verification failed", meta["reason"])
         self.assertFalse((out / "promotion-record.json").exists())
 
     def test_a_record_for_another_commit_is_failed(self):
         _, meta, _ = self.fetch([self.release()], make_record(commit="e" * 40))
         self.assertEqual(meta["status"], "failed")
+        self.assertIs(meta["urgent"], True)
         self.assertIn("stable moved without a release", meta["reason"])
 
     def test_an_invalid_record_is_failed(self):
@@ -592,14 +728,17 @@ class Lag(unittest.TestCase):
         self.assertAlmostEqual(result["days"], 25.0, places=1)
         self.assertEqual(result["landedSource"], "pull request merge")
 
-    def test_a_commit_without_a_pull_request_uses_its_commit_date(self):
+    def test_a_commit_without_a_pull_request_has_an_unknown_age(self):
         self.git("init", "-b", "main")
         stable = self.commit("a", 40)
         self.git("update-ref", "refs/remotes/origin/stable", stable)
         head = self.commit("b", 30)
         result = self.lag(head)
-        self.assertAlmostEqual(result["days"], 30.0, places=1)
-        self.assertEqual(result["landedSource"], "commit date")
+        self.assertEqual(result["state"], "unknown")
+        self.assertIsNone(result["days"])
+        self.assertIn("no merged pull request", result["error"])
+        r = evaluate(lag=result)
+        self.assertEqual(states(r)["stale"], "unknown", "the committer date is not trusted")
 
     def test_a_stable_at_main_is_current(self):
         self.git("init", "-b", "main")
@@ -684,6 +823,19 @@ class Resolve(unittest.TestCase):
         resolved = self.resolve(self.record)
         self.assertIsNotNone(resolved["images"][0]["error"])
         r = evaluate(self.record, resolved=resolved)
+        self.assertEqual(states(r)["drift"], "unknown")
+        self.assertEqual(states(r)["incomplete"], "active")
+
+    def test_a_mirror_never_answers_for_a_failed_primary_lookup(self):
+        record = copy.deepcopy(self.record)
+        record["images"].append(dict(record["images"][0], reference="docker.io/library/redis:8", digest=D5))
+        with open(self.digests, "a") as f:  # only the mirror knows the image
+            f.write(f"mirror.gcr.io/library/redis:8 {D5}\ndocker.io/library/redis:8x {D5}\n")
+        resolved = self.resolve(record)
+        redis = next(i for i in resolved["images"] if i["reference"] == "docker.io/library/redis:8")
+        self.assertIsNone(redis["digest"])
+        self.assertIsNotNone(redis["error"])
+        r = evaluate(record, resolved=resolved)
         self.assertEqual(states(r)["drift"], "unknown")
         self.assertEqual(states(r)["incomplete"], "active")
 
@@ -786,9 +938,21 @@ class Workflow(unittest.TestCase):
         steps = self.jobs["keepalive"]["steps"]
         self.assertEqual(len(steps), 1)
         self.assertIn("--method PUT", steps[0]["run"])
+        self.assertNotIn("||", steps[0]["run"], "a failed call must fail the job")
         self.assertIn("actions/workflows/stable-watch.yaml/enable", steps[0]["run"])
         self.assertNotIn("checkout", json.dumps(self.jobs["keepalive"]))
         self.assertNotIn("needs", self.jobs["keepalive"])
+
+    def test_the_watchdog_job_in_tiers_is_minimal_and_push_only(self):
+        job = yaml.safe_load(self.tiers)["jobs"]["stable-watch-alive"]
+        self.assertEqual(job["permissions"], {"contents": "read", "actions": "read"})
+        self.assertIn("'push'", job["if"])
+        self.assertNotIn("pull_request", job["if"])
+        self.assertEqual(job["container"], self.jobs["report"]["container"])
+        self.assertEqual([s.get("run") for s in job["steps"] if "run" in s],
+                         ['git config --global --add safe.directory "$GITHUB_WORKSPACE"', "make stable-watch-watchdog"])
+        for step in job["steps"]:
+            self.assertNotIn("secrets.", json.dumps(step))
 
     def test_the_report_waits_for_every_result_and_runs_after_a_failure(self):
         self.assertEqual(set(self.jobs["report"]["needs"]), {"fetch", "resolve", "scan"})

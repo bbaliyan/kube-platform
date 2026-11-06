@@ -179,3 +179,26 @@ jobs:
             out/scan-results.json
             out/promotion-record-scanned.json
           if-no-files-found: ignore
+
+  # Not a required check. The Stable watch workflow is scheduled, and GitHub
+  # disables a schedule after 60 days without activity. This job runs on every
+  # push to main, which a quiet repository cannot disable, and fails when the
+  # newest Stable watch run is older than 2 days. It skips with a notice when
+  # stable has no release yet. contents: read is for the checkout and the
+  # release list; actions: read is for the run list.
+  stable-watch-alive:
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    container: ghcr.io/bbaliyan/kube-devenv:0.13.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: make stable-watch-watchdog
+        env:
+          GH_TOKEN: ${{ github.token }}
