@@ -1,7 +1,10 @@
 # Values injected by the kube-node platform Application helm.parameters block.
 # Defaults here are only used when rendering locally (e.g. helm template for validation).
 platformRepoURL: ""
-platformRevision: main
+# The branch or tag the platform Applications follow. `stable` moves only through
+# the promote workflow. `main` is the development branch: following it on purpose
+# gives up the soak and the gates (see "Using stable" in the README).
+platformRevision: stable
 certMode: selfsigned
 clusterName: ""                 # raw cluster identifier — used to tag dynamically-provisioned storage
 clusterAutoscalerEnabled: false # deploy cluster-autoscaler — off by default; opt in per-cluster

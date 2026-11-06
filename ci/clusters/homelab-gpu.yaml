@@ -13,14 +13,14 @@ spec:
   project: default
   sources:
     - repoURL: https://github.com/bbaliyan/kube-platform
-      targetRevision: main
+      targetRevision: stable
       path: bootstrap
       helm:
         parameters:
           - name: platformRepoURL
             value: https://github.com/bbaliyan/kube-platform
           - name: platformRevision
-            value: main
+            value: stable
           - name: certMode
             value: selfsigned
           - name: clusterName
@@ -97,7 +97,7 @@ spec:
                       parameters:
                         fsType: ext4
     - repoURL: https://github.com/bbaliyan/kube-platform
-      targetRevision: main
+      targetRevision: stable
       ref: values
   syncPolicy:
     automated:

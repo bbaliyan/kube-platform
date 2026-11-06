@@ -10,7 +10,7 @@ spec:
   project: default
   sources:
     - repoURL: https://github.com/bbaliyan/kube-platform.git
-      targetRevision: main
+      targetRevision: stable
       path: bootstrap
       helm:
         valueFiles:
@@ -19,7 +19,7 @@ spec:
           - name: platformRepoURL
             value: "https://github.com/bbaliyan/kube-platform.git"
           - name: platformRevision
-            value: "main"
+            value: "stable"
           - name: certMode
             value: "acme"
           - name: acmeEmail
@@ -41,7 +41,7 @@ spec:
           - name: repoCredsUrlPrefix
             value: "git@github.com:example/"
     - repoURL: https://github.com/bbaliyan/kube-platform.git
-      targetRevision: main
+      targetRevision: stable
       ref: values
   destination:
     server: https://kubernetes.default.svc

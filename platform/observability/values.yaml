@@ -49,7 +49,7 @@ clusterFqdnSuffix: ""
 # Source repo for the observability-ingress-routes sub-chart.
 # Set by the parent bootstrap Application so all sub-apps come from the same repo.
 platformRepoURL: ""
-platformRevision: main
+platformRevision: stable
 
 # Adds the Cilium/Hubble Grafana dashboards. Set by the parent bootstrap
 # Application from its own hubbleEnabled — keep in sync with whether
