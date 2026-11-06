@@ -1,0 +1,290 @@
+# Evaluates one promotion candidate. promote.yaml calls it, up to three times.
+# Setup only. Every check lives in the Makefile; see ci/README.md "Promote
+# workflow".
+#
+# Trust: the workflow file, its scripts, the Makefile, render.py,
+# render-base.sh and the registry allowlist come from the trusted checkout
+# (the main commit of the run). The candidate is checked out beside it as data.
+# make promote-overlay then replaces the candidate's ci/, tests/ and Makefile
+# with the trusted ones, so nothing the candidate carries can judge itself.
+#
+# No job here has a secret, except the scan step that gets the read-only
+# Docker Hub token. No job here can write to the repository.
+name: Promote candidate
+
+on:
+  workflow_call:
+    inputs:
+      candidate:
+        description: Commit to evaluate.
+        required: true
+        type: string
+      stable_sha:
+        description: Commit of stable at the start of the run.
+        required: true
+        type: string
+      slot:
+        description: Position of the candidate (1 to 3). It names the artifacts.
+        required: true
+        type: string
+      first_promotion:
+        description: '"true" if no stable release exists yet.'
+        required: true
+        type: string
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+    outputs:
+      result:
+        description: pass or fail
+        value: ${{ jobs.result.outputs.result }}
+      needs_approval:
+        description: Anything but the exact value false means the owner must read the additions.
+        value: ${{ jobs.result.outputs.needs_approval }}
+      failed:
+        description: The jobs that did not succeed.
+        value: ${{ jobs.result.outputs.failed }}
+
+permissions:
+  contents: read
+
+# bash with pipefail, so a failing command in a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: ghcr.io/bbaliyan/kube-devenv:0.13.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - run: git config --global --add safe.directory '*'
+      - run: make -C trusted promote-overlay
+      # An empty BASE_REF skips the commit-message check: these commits are on main already.
+      - run: make test-commit BASE_REF=
+        working-directory: candidate
+
+  # Runs the kind end-to-end run. A failed run is retried once, on a new cluster.
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - run: make -C trusted promote-overlay
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          # renovate: datasource=github-releases depName=helm/helm
+          version: v4.3.1
+      - run: pip install --quiet pyyaml
+      # stable is the genesis: a version bump is tested as the upgrade it is for a cluster that follows stable.
+      - id: first
+        run: make test-integration GENESIS_REF="$STABLE_SHA" RUNTIME_IMAGES_OUT=out/runtime-images.json
+        working-directory: candidate
+        continue-on-error: true
+        env:
+          STABLE_SHA: ${{ inputs.stable_sha }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ steps.first.outcome == 'failure' }}
+        with:
+          name: kind-logs-first-try-${{ inputs.slot }}
+          path: candidate/kind-logs/
+          if-no-files-found: ignore
+      - run: make test-integration GENESIS_REF="$STABLE_SHA" RUNTIME_IMAGES_OUT=out/runtime-images.json
+        if: ${{ steps.first.outcome == 'failure' }}
+        working-directory: candidate
+        env:
+          STABLE_SHA: ${{ inputs.stable_sha }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: runtime-images-${{ inputs.slot }}
+          path: candidate/out/runtime-images.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() }}
+        with:
+          name: kind-logs-${{ inputs.slot }}
+          path: candidate/kind-logs/
+          if-no-files-found: ignore
+
+  record:
+    needs: integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate }}
+          path: candidate
+          persist-credentials: false
+      - run: make -C trusted promote-overlay
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          # renovate: datasource=github-releases depName=helm/helm
+          version: v4.3.1
+      - run: pip install --quiet pyyaml jsonschema
+      - run: make render
+        working-directory: candidate
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runtime-images-${{ inputs.slot }}
+          path: candidate/out/
+      - run: make promotion-record
+        working-directory: candidate
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: promotion-record-${{ inputs.slot }}
+          path: candidate/out/promotion-record.json
+
+  # Needs no candidate checkout: it reads the record and the stable record.
+  scan:
+    needs: record
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: ghcr.io/bbaliyan/kube-devenv:0.13.1
+    env:
+      DOCKER_CONFIG: /tmp/docker-config
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: git config --global --add safe.directory '*'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: promotion-record-${{ inputs.slot }}
+          path: out/
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ inputs.first_promotion != 'true' }}
+        with:
+          name: baseline-record
+          path: out/baseline/
+      # The one step that holds a secret: a read-only Docker Hub token, only to
+      # avoid rate limits on shared runner addresses. Without it the scans run
+      # anonymously.
+      - name: Docker Hub login for pulls
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          [ -n "$DOCKERHUB_USERNAME$DOCKERHUB_TOKEN" ] || exit 0
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "set both DOCKERHUB_USERNAME and DOCKERHUB_TOKEN, or neither" >&2
+            exit 1
+          fi
+          mkdir -p "$DOCKER_CONFIG"
+          auth="$(printf '%s:%s' "$DOCKERHUB_USERNAME" "$DOCKERHUB_TOKEN" | base64 -w0)"
+          printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}' "$auth" > "$DOCKER_CONFIG/config.json"
+      - run: make kev-catalog
+      # The gate exits 1 when it blocks, and the job stops there.
+      - run: make security-gate BASELINE_RECORD=out/baseline/promotion-record.json
+        if: ${{ inputs.first_promotion != 'true' }}
+      - run: make security-gate FIRST_PROMOTION=1
+        if: ${{ inputs.first_promotion == 'true' }}
+      - run: rm -rf "$DOCKER_CONFIG"
+        if: ${{ always() }}
+      # Only a pass uploads the scanned record, so its name never hides a block.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ success() }}
+        with:
+          name: scanned-record-${{ inputs.slot }}
+          path: out/promotion-record-scanned.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: security-gate-report-${{ inputs.slot }}
+          path: |
+            out/security-summary.md
+            out/scan-results.json
+          if-no-files-found: ignore
+
+  # Renders the candidate and stable with the trusted render.py, which fetches
+  # the chart repositories the candidate names. This job has no secret.
+  risk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - run: make -C trusted promote-overlay
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          # renovate: datasource=github-releases depName=helm/helm
+          version: v4.3.1
+      - run: pip install --quiet pyyaml jsonschema
+      - run: git worktree add --detach ../stable-src "$STABLE_SHA"
+        working-directory: candidate
+        env:
+          STABLE_SHA: ${{ inputs.stable_sha }}
+      # If this step exits non-zero, or needs_approval is not the exact value
+      # false, the owner must read the additions. promote.yaml always asks.
+      - id: risk
+        run: make manifest-risk STABLE_REF="$STABLE_SHA"
+        working-directory: candidate
+        env:
+          STABLE_SHA: ${{ inputs.stable_sha }}
+      - run: make promote-revert-check
+        working-directory: candidate
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: risk-${{ inputs.slot }}
+          path: candidate/out/manifest-risk/
+          if-no-files-found: ignore
+    outputs:
+      needs_approval: ${{ steps.risk.outputs.needs_approval }}
+
+  result:
+    needs: [tests, integration, record, scan, risk]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      result: ${{ steps.summary.outputs.result }}
+      needs_approval: ${{ steps.summary.outputs.needs_approval }}
+      failed: ${{ steps.summary.outputs.failed }}
+    steps:
+      - id: summary
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          RISK_APPROVAL: ${{ needs.risk.outputs.needs_approval }}
+        run: |
+          failed="$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key)(\(.value.result))"' <<< "$RESULTS" | paste -sd, -)"
+          approval=true
+          [ "$RISK_APPROVAL" = false ] && [ "$(jq -r '.risk.result' <<< "$RESULTS")" = success ] && approval=false
+          {
+            echo "result=$([ -z "$failed" ] && echo pass || echo fail)"
+            echo "needs_approval=$approval"
+            echo "failed=$failed"
+          } >> "$GITHUB_OUTPUT"

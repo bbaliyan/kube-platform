@@ -141,3 +141,35 @@ manifest-risk: render
 	python3 ci/manifest_risk.py --stable out/base --candidate out/head \
 		--allowlist ci/registry-allowlist.yaml --out-dir out/manifest-risk
 	if [ -n "$${GITHUB_STEP_SUMMARY:-}" ]; then cat out/manifest-risk/manifest-risk.md >> "$$GITHUB_STEP_SUMMARY"; fi
+
+# The promote workflow (ci/README.md "Promote workflow") judges a candidate with
+# the scripts of a trusted checkout (main HEAD), never with the candidate's own.
+#   promote-overlay        run in the trusted checkout: replace ci/, tests/ and the
+#                          Makefile of the candidate checkout CANDIDATE with the
+#                          trusted ones, so the candidate is data only
+#   promote-revert-check   run in the overlaid candidate checkout after
+#                          manifest-risk: compare the charts and images of the
+#                          candidate, main HEAD (MAIN_ROOT) and stable (STABLE_ROOT)
+#   test-promote           fixture tests of ci/promote.py and of the two workflows
+CANDIDATE ?= ../candidate
+MAIN_ROOT ?= ../trusted
+STABLE_ROOT ?= ../stable-src
+
+.PHONY: promote-overlay promote-revert-check test-promote
+test-scripts: test-promote
+
+promote-overlay:
+	rm -rf "$(CANDIDATE)/ci" "$(CANDIDATE)/tests" "$(CANDIDATE)/Makefile"
+	cp -r ci tests Makefile "$(CANDIDATE)/"
+
+promote-revert-check:
+	test -d out/head -a -d out/base
+	python3 ci/render.py "$(MAIN_ROOT)" out/main-head
+	python3 ci/promote.py deps --rendered out/head --repo-root . --out out/deps-candidate.json
+	python3 ci/promote.py deps --rendered out/main-head --repo-root "$(MAIN_ROOT)" --out out/deps-head.json
+	python3 ci/promote.py deps --rendered out/base --repo-root "$(STABLE_ROOT)" --out out/deps-stable.json
+	python3 ci/promote.py revert-check --candidate out/deps-candidate.json --head out/deps-head.json \
+		--stable out/deps-stable.json --out out/manifest-risk/revert.json
+
+test-promote:
+	tests/check-promote.py

@@ -58,6 +58,144 @@ the root shows it as "requires pruning" until someone deletes it by hand. Use
 `argocd app delete --cascade=false` if the resources must stay, or a cascading
 delete if they must go.
 
+## Promote workflow
+
+`.github/workflows/promote.yaml` is the only way `stable` moves. It runs every
+Sunday at 22:00 UTC and can be started by hand. `promote-candidate.yaml` is the
+part that tests one candidate. `ci/promote.py` makes the decisions, and the
+Makefile runs the checks. The workflow files only set up and call them.
+
+### What a run does
+
+1. **Select.** It takes the newest commits of `main` that landed at least
+   7 days ago, at most three. If `stable` is already at or ahead of `main`, or
+   no commit is old enough yet, the run ends with nothing to do. This is a green
+   run.
+2. **Test each candidate, newest first.** A candidate runs these jobs:
+   `tests` (`make test-commit`), `integration` (the kind run, tried twice),
+   `record`, `scan` (the security gate) and `risk` (the manifest-risk diff and
+   the revert check). If any job fails, the workflow tries the next older
+   candidate. The first candidate that passes every job wins. The summary of
+   `choose` lists every candidate that was skipped and the jobs that failed.
+3. **Choose and review.** The `choose` job picks the winner, repeats the final
+   checks and writes the review text to its summary: the scan counts, the
+   revert check and the manifest-risk diff.
+4. **Promote.** The `promote` job waits for the owner. After the approval it
+   repeats the checks, pushes the tag, attests the record, creates a draft
+   release, pushes the commit to `stable`, and publishes the release. A
+   failure before the push removes the tag and the draft.
+
+### The candidate rule
+
+A commit has landed when its pull request merged. `ci/promote.py` reads the
+merge time from the GitHub API. It does not use the commit date, because the
+author of a push that skips a pull request chooses that date. A commit with no
+merged pull request counts as landed now. The age of a candidate is the age of
+the youngest commit between `stable` and the candidate, so a commit that claims
+an early time cannot hide a younger change under it. A candidate younger than
+7 days is never chosen on the weekly run.
+
+The revert check blocks a candidate that holds a chart or image that `main` no
+longer has and `stable` does not have. A newer version of the same chart or
+image at `main` is an ordinary update and does not block. A version that has
+no numbers in it (a digest, or a tag such as `latest`) cannot be ordered, so
+it blocks.
+
+### Which code judges the candidate
+
+The candidate is data. The workflow checks out the main commit that started the
+run (the trusted checkout) and the candidate side by side. `make promote-overlay`
+then replaces `ci/`, `tests/` and the `Makefile` of the candidate checkout with
+the trusted ones. The scripts, the Makefile, `render.py`, `render-base.sh` and
+`registry-allowlist.yaml` are therefore never the candidate's own. The `scan`
+job, which runs the security gate and reads its ignore file, does not check out
+the candidate at all.
+
+The trusted checkout is the head of `main` at the start of the run, not a
+soaked commit. It is the same code that the workflow file itself comes from.
+An old candidate and a newer `ci/` can disagree (for example, `ci/clusters`
+names an app that the candidate lacks). The candidate then fails closed and the
+next older one is tried.
+
+No job that handles candidate data has a secret or a write permission, with one
+exception: the `scan` step gets the read-only Docker Hub token if both
+`DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` exist. The `promote` job has the
+deploy key. It does not check out the candidate. It fetches the history of
+`main`, which holds the candidate commit as data.
+
+### Approval
+
+The `promote` environment asks the owner to approve every run that reaches the
+push, also when the manifest-risk diff has no additions. GitHub cannot make an
+environment ask only sometimes, and the deploy key must stay in that
+environment. The review text tells the owner whether there are additions.
+For the manifest-risk result, only the exact value `false` from a job that
+passed counts as no additions. A missing value counts as additions. A failed
+`risk` job fails the candidate.
+
+### Starting a run
+
+Open Actions, select Promote and choose Run workflow on `main`.
+
+- **Weekly run.** Leave every input empty. This is the same as the schedule.
+- **Dry run.** Set `dry_run`. The run does everything except the key, the push,
+  the tag, the attestation and the release. The `dry-run` job does the same
+  final checks as the `promote` job and prints what a real run would do. It
+  does not ask for approval.
+- **Fast path.** Write a reason in `fast_path_reason`. The run skips the soak
+  and promotes the head of `main`. If any other commit since `stable` is younger
+  than 7 days, the review text says that the approval covers the aggregate diff
+  of all of them. The security gate and the revert check still apply.
+- **First promotion.** Set `first_promotion`. It is allowed only when no
+  `stable-YYYYMMDD` release exists, and a run without the flag refuses to
+  promote without a baseline. The gate then blocks only on a KEV finding.
+- **Key proof.** Set `prove_key`. The run does nothing else. In the `promote`
+  environment it creates a throwaway tag `stable-probe-...` with the deploy key
+  and deletes it. In a job outside the environment it tries the same with the
+  workflow token, and the job passes only if the push is rejected. The tag
+  ruleset has the same bypass rule as the one for `stable`, and the probe never
+  touches `stable`. The first job waits for the owner, like every job in that
+  environment.
+
+To approve, open the waiting run, read the summary of the `choose` job, then
+choose Review deployments and approve.
+
+### Reading a result
+
+- The summary of `select` shows the candidates and their landing times.
+- The summary of `choose` shows each candidate with its result and failed jobs.
+  After it comes the review text.
+- The artifacts `security-gate-report-N` and `risk-N` (N is the candidate
+  number) hold the scan summary and the full manifest-risk files.
+- A promoted run publishes release `stable-YYYYMMDD`. A second promotion on the
+  same day gets the suffix `-2`, and so on. The release holds
+  `promotion-record.json` (the scanned record), `manifest-risk.json` and
+  `manifest-risk.md`. The release text carries the manifest-risk diff.
+- Verify a record with
+  `gh attestation verify promotion-record.json --repo <owner>/<repo>`.
+  The next run does this itself with the record of the current `stable`. It
+  stops if the record does not match the commit of `stable`.
+
+### Settings the workflow needs
+
+- The repository setting for immutable releases must be on. The `promote` job
+  stops before the push if it can read the setting and finds it off. It fails
+  after the publish if the release is not immutable.
+- The `stable` and `stable-tags` rulesets, the `promote` environment and the
+  secret `PROMOTE_DEPLOY_KEY` must exist.
+- Optional: the secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
+- `ci/promote-key.sh` holds GitHub's published SSH host key. If GitHub rotates
+  it, the push fails until the file is updated.
+
+`make test-promote` (part of `make test-scripts`) runs `tests/check-promote.py`.
+It tests the candidate rule, the revert check, the fallback, the final checks
+and the baseline logic with fixtures and a real git history. It also reads
+both workflow files. It fails if an action is not pinned to a commit, if a job
+that handles candidate data gets a secret or a write permission, or if a job
+outside the `promote` environment can read the deploy key.
+
+Not tested here: the workflows on GitHub Actions. The first run is a dry run.
+
 ## Image pulls in the integration tier
 
 A public registry can refuse anonymous pulls from a shared runner address. To keep
