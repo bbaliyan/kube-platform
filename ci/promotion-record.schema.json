@@ -60,6 +60,67 @@
         }
       }
     },
+    "scan": {
+      "description": "The result of the security gate (ci/security_gate.py). Absent until the gate has run. Findings are the HIGH and CRITICAL ones, and any on the CISA KEV list.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scannedAt", "verdict", "baselineCommit", "imagesListed", "imagesScanned", "counts", "reasons", "exemptions", "findings"],
+      "properties": {
+        "scannedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$" },
+        "verdict": { "enum": ["pass", "block"] },
+        "baselineCommit": {
+          "description": "The commit of the stable record that the delta was taken against. Null for the first promotion.",
+          "type": ["string", "null"],
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "imagesListed": { "type": "integer", "minimum": 0 },
+        "imagesScanned": { "type": "integer", "minimum": 0 },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["blocking", "known", "ignored", "kev", "otherSeverities"],
+          "properties": {
+            "blocking": { "type": "integer", "minimum": 0 },
+            "known": { "type": "integer", "minimum": 0 },
+            "ignored": { "type": "integer", "minimum": 0 },
+            "kev": { "type": "integer", "minimum": 0 },
+            "otherSeverities": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "reasons": { "description": "Why the gate blocks. Empty when the verdict is pass.", "type": "array", "items": { "type": "string" } },
+        "exemptions": {
+          "description": "Images that Trivy detected nothing in, and that the ignore file exempts from that failure.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["image", "reason"],
+            "properties": {
+              "image": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["image", "id", "package", "installedVersion", "fixedVersion", "severity", "kev", "status"],
+            "properties": {
+              "image": { "description": "The repository, without tag or digest.", "type": "string", "minLength": 1 },
+              "id": { "type": "string", "minLength": 1 },
+              "package": { "type": "string", "minLength": 1 },
+              "installedVersion": { "type": "string" },
+              "fixedVersion": { "type": ["string", "null"] },
+              "severity": { "enum": ["UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+              "kev": { "type": "boolean" },
+              "status": { "enum": ["blocking", "known", "ignored"] }
+            }
+          }
+        }
+      }
+    },
     "scanner": {
       "description": "Left null by the record builder. The security gate fills these in.",
       "type": "object",
