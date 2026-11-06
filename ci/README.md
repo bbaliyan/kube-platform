@@ -294,32 +294,62 @@ is its schema, and `ci/promotion_record.py` builds it.
 
 It holds:
 
-- **images**: every image with its digest. The list is the union of two sources.
+- **images**: every image with one digest that its registry serves. The list is the union of two sources.
   - `rendered`: the images in the rendered example clusters. The script does not
     grep `image:`. It also reads images that a grep misses. These are:
     arguments (the cert-manager solver, the Prometheus operator config
     reloader), the GPU operator fields, and the image of a system-upgrade Plan
     (`rancher/rke2-upgrade`). A GPU operator component with `enabled: false` is
     skipped.
-  - `runtime`: the images the containers report after the kind run. The digest
-    is the `imageID` the node pulled. It wins over the registry.
-  - `digestSource` says where the digest came from. `runtime` is the digest of
-    a running container. `registry` is what the registry returned for the tag
-    when the record was built, or the digest written in the manifest.
-    A `registry` digest says what the tag points at now. It does not prove that
-    any node pulled it.
+  - `runtime`: the images the containers report after the kind run. A
+    container whose image is only an ID (`sha256:...`, which the kubelet shows
+    for an image that a digest pins) takes its name from the repository in its
+    `imageID`.
+  - `digest` is always a digest that the registry served when the record was
+    built. The security gate scans this digest and no other. The builder asks
+    the registry for the digest of the image index, as
+    `docker buildx imagetools inspect` prints it. It also asks for a digest
+    that the manifest pins. If the registry does not serve it, the build fails.
+  - `digestSource` says how the record got the digest. `registry`: the registry
+    returned it for the tag. `pinned`: the reference names the digest and the
+    registry served it. Either way, it says what the registry holds now. It
+    does not prove that any node pulled it.
+  - `runtimeDigests` holds the digests that running containers reported. They
+    are information only and nothing scans them. The kind run loads its images
+    from single-platform archives, so the `imageID` of a container can be a
+    digest that no registry serves. `runtimeDiffers` is `true` when a runtime
+    digest is not the `digest` of the entry. A multi-platform image often
+    differs: the node reports the digest of one platform, and the entry holds
+    the digest of the index. This is normal. Look at it when a digest that a
+    manifest pins differs.
   - One entry exists for each repository and digest. A tag beside a digest is
     dropped.
 - **charts**: name, version, repository and digest. The digest is the digest of
   the chart archive (the value in the repository index), or the OCI manifest
   digest.
-- **notScanned**: what an image scan does not see. These are the Grafana
-  plugins, which the pod downloads at start. They also include
-  `unresolved-image` entries: images the registry does not have under that
-  name. The GPU driver is one. The ClusterPolicy names `595.91.07`, and the
-  operator adds the OS suffix on the node.
+- **notScanned**: what an image scan does not see. Each entry has a type, a
+  name and a reason.
+  - `grafana-plugin`: a plugin that the pod downloads at start.
+  - `unresolved-image`: an image the registry does not have under that name.
+    The GPU driver is one. The ClusterPolicy names `595.91.07`, and the
+    operator adds the OS suffix on the node.
+  - `test-only`: an image that only objects with `helm.sh/hook: test` use (the
+    phases `test`, `test-success` and `test-failure`, and no other phase), and
+    that no container of the kind run used. A Helm test pod runs only when
+    someone runs `helm test`. Argo CD does not run it. Today this is the
+    kubetest2 image (`kubekins-e2e`) in the `ebs-csi-driver-test` pod, the
+    bats image in the Grafana test pod, and the busybox image in the
+    nvidia-gpu-exporter test pod. An image that a workload or another hook also uses stays
+    in `images`.
 - **scanner**: name, version and database time. They stay `null`. The security
   gate fills them in.
+- **schemaVersion**: `2`. Version 2 changed what `digest` and `digestSource`
+  mean, and added `runtimeDigests`, `runtimeDiffers` and the `test-only` type.
+  In version 1 the `digest` of a running image was the `imageID` of the node,
+  and the gate could fail with MANIFEST_UNKNOWN. A version 1 record is not
+  valid, so it cannot be a baseline. No `stable` record existed when the
+  version changed, so no promotion is affected. Raise the number again when a
+  field changes meaning, or when a required field is added.
 - **scan**: absent until the security gate has run. See "Security gate".
 
 To build it:
@@ -340,7 +370,8 @@ and stand-in `docker` and `helm` commands.
 
 ## Security gate
 
-`ci/security_gate.py` scans the images of a promotion record with Trivy and
+`ci/security_gate.py` scans the images of a promotion record with Trivy, by the
+`digest` of each entry (the digest that the registry serves), and
 decides if the record may be promoted. Trivy runs from the pinned kube-devenv
 image, as the kube-devenv scheduled scan does. The gate compares the scan with
 the record of the current `stable`, so it blocks only what a promotion adds.
@@ -400,6 +431,11 @@ detects nothing. An `image` entry exempts a repository (not a digest) from that
 one failure:
 
     image registry.k8s.io/pause exp:2027-01-31 reason:static binary, no OS packages
+
+`docker.io/library/busybox` is exempt in the same way. It has no OS release
+and no package database, so Trivy has nothing to match. This means its
+vulnerabilities are not scanned. The entry expires, and the owner decides at
+each renewal.
 
 The exemption does not hide findings. If the scan has results, the gate checks
 them as usual. The exemptions a run used are in the job summary and in

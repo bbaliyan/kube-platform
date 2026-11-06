@@ -42,6 +42,10 @@ def grep_image_lines():
 
 
 REGISTRY_ONLY = [  # images the fixtures hold, with a digest from the registry stand-in
+    "quay.io/jetstack/cert-manager-controller:v1.21.3",
+    "quay.io/argoproj/argocd:v3.6.0",
+    "docker.io/library/alpine:3.23",
+    "docker.io/library/nginx:1.29",
     "docker.io/grafana/grafana:13.2.0",
     "docker.io/library/busybox:1.37",
     "nvcr.io/nvidia/k8s-device-plugin:v0.20.1",
@@ -67,7 +71,9 @@ class Record(unittest.TestCase):
         cls.digests = Path(cls.tmp.name, "digests")
         refs = REGISTRY_ONLY + [OCI_CHART, MIRROR_ONLY]
         # Stand-ins see names as docker prints them: the reference as built.
-        cls.digests.write_text("".join(f"{r} {sha(r)}\n" for r in refs), encoding="utf-8")
+        # The tag of a pinned image resolves to the pinned digest, as it does when the pin is the index.
+        cls.digests.write_text("".join(f"{r} {sha(r)}\n" for r in refs)
+                               + f"quay.io/cilium/cilium:v1.20.4 {CILIUM.split('@')[1]}\n", encoding="utf-8")
         cls.result = cls.run_builder(cls.digests)
         if cls.result.returncode:
             raise RuntimeError(cls.result.stderr)
@@ -78,9 +84,11 @@ class Record(unittest.TestCase):
         cls.tmp.cleanup()
 
     @classmethod
-    def run_builder(cls, digests, runtime="runtime-images.json", out="record.json"):
+    def run_builder(cls, digests, runtime="runtime-images.json", out="record.json", missing=None):
         env = dict(os.environ, PATH=f"{FIXTURES / 'bin'}{os.pathsep}{os.environ['PATH']}",
                    STUB_DIGESTS=str(digests), PROMOTION_RECORD_PAUSE="0")
+        if missing:
+            env["STUB_MISSING"] = str(missing)
         return subprocess.run(
             [sys.executable, "-I", str(BUILDER), "build", "--rendered", str(FIXTURES / "rendered"),
              "--runtime", str(FIXTURES / runtime), "--repo-root", str(FIXTURES / "repo"),
@@ -119,16 +127,38 @@ class Record(unittest.TestCase):
                          sha("docker.io/library/busybox:1.37"))
         self.assertEqual(self.images()["docker.io/library/busybox:1.37"]["sources"], ["rendered", "runtime"])
 
-    def test_runtime_digest_wins_and_runtime_only_images_are_listed(self):
+    def test_the_registry_digest_is_the_digest_and_the_runtime_digest_is_kept_apart(self):
         controller = self.images()["quay.io/jetstack/cert-manager-controller:v1.21.3"]
-        self.assertEqual(controller["digest"], "sha256:" + "a" * 64)
+        self.assertEqual(controller["digest"], sha("quay.io/jetstack/cert-manager-controller:v1.21.3"))
+        self.assertEqual(controller["runtimeDigests"], ["sha256:" + "a" * 64])
+        self.assertTrue(controller["runtimeDiffers"])
         self.assertEqual(controller["sources"], ["rendered", "runtime"])
+
+    def test_a_preloaded_archive_digest_is_never_the_digest(self):
+        argocd = self.images()["quay.io/argoproj/argocd:v3.6.0"]
+        self.assertEqual(argocd["digest"], sha("quay.io/argoproj/argocd:v3.6.0"))
+        self.assertEqual((argocd["runtimeDigests"], argocd["runtimeDiffers"], argocd["sources"], argocd["digestSource"]),
+                         (["sha256:" + "d" * 64], True, ["runtime"], "registry"))
+
+    def test_the_flag_is_false_when_the_digests_agree_or_no_container_used_the_image(self):
+        by = self.images()
+        self.assertFalse(by[CILIUM]["runtimeDiffers"])
+        self.assertEqual(by[CILIUM]["runtimeDigests"], ["sha256:" + "b" * 64])
+        self.assertEqual((by[TOOLKIT]["runtimeDigests"], by[TOOLKIT]["runtimeDiffers"]), ([], False))
+
+    def test_an_image_id_is_named_by_the_repository_of_its_image_id(self):
+        hubble = self.images()["quay.io/cilium/hubble-ui@sha256:" + "f" * 64]
+        self.assertEqual((hubble["digest"], hubble["digestSource"], hubble["runtimeDiffers"]),
+                         ("sha256:" + "f" * 64, "pinned", False))
+        listed = " ".join(self.images())
+        self.assertNotIn("library/sha256", listed)
+        self.assertNotIn("import-", listed)
 
     def test_one_entry_per_repository_and_digest(self):
         cilium = self.images()[CILIUM]
         self.assertEqual((cilium["digest"], cilium["sources"], cilium["digestSource"]),
-                         ("sha256:" + "b" * 64, ["rendered", "runtime"], "runtime"))
-        self.assertEqual([i for i in self.images() if "cilium" in i], [CILIUM])
+                         ("sha256:" + "b" * 64, ["rendered", "runtime"], "pinned"))
+        self.assertEqual([i for i in self.images() if "cilium/cilium" in i], [CILIUM])
         digests = [(i["reference"].split("@")[0].split(":")[0], i["digest"]) for i in self.record["images"]]
         self.assertEqual(len(digests), len(set(digests)))
 
@@ -138,8 +168,54 @@ class Record(unittest.TestCase):
     def test_digest_source(self):
         by = {r: i["digestSource"] for r, i in self.images().items()}
         self.assertEqual(by["docker.io/library/busybox:1.37"], "registry")
-        self.assertEqual(by["quay.io/jetstack/cert-manager-controller:v1.21.3"], "runtime")
-        self.assertEqual(by[TOOLKIT], "registry")
+        self.assertEqual(by["quay.io/jetstack/cert-manager-controller:v1.21.3"], "registry")
+        self.assertEqual(by[TOOLKIT], "pinned")
+        self.assertEqual(set(by.values()), {"registry", "pinned"})
+
+    def test_a_pinned_digest_that_the_registry_does_not_serve_fails_the_build(self):
+        missing = Path(self.tmp.name, "missing")
+        missing.write_text(TOOLKIT + "\n", encoding="utf-8")
+        res = self.run_builder(self.digests, out="missing.json", missing=missing)
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn(TOOLKIT, res.stderr)
+        self.assertFalse(Path(self.tmp.name, "missing.json").exists())
+
+    def test_helm_test_images_are_not_scanned_and_are_listed(self):
+        self.assertNotIn("bats/bats", " ".join(self.images()))
+        self.assertIn({"type": "test-only", "name": "docker.io/bats/bats:1.12.0",
+                       "reason": "only an object with helm.sh/hook: test uses it; it runs only when someone runs helm test"},
+                      self.record["notScanned"])
+
+    def test_an_image_that_a_test_pod_shares_with_a_workload_is_scanned(self):
+        self.assertIn("docker.io/library/busybox:1.37", self.images())
+        self.assertNotIn("docker.io/library/busybox:1.37", [n["name"] for n in self.record["notScanned"]])
+
+    def test_an_image_in_a_hook_that_is_not_only_a_test_hook_is_scanned(self):
+        self.assertIn("docker.io/library/alpine:3.23", self.images())
+        self.assertIn("docker.io/library/nginx:1.29", self.images())
+        self.assertEqual([n["name"] for n in self.record["notScanned"] if n["type"] == "test-only"],
+                         ["docker.io/bats/bats:1.12.0"])
+
+    def test_an_image_a_container_used_is_scanned_with_its_runtime_digest_kept(self):
+        self.assertEqual(self.images()["docker.io/library/alpine:3.23"]["runtimeDigests"], ["sha256:" + "7" * 64])
+
+    def test_version_1_records_are_rejected(self):
+        old = json.loads(json.dumps(self.record))
+        old["schemaVersion"] = 1
+        self.assertIn("schemaVersion", " ".join(promotion_record.validate_record(old)))
+
+    def test_the_runtime_fields_are_required(self):
+        bad = json.loads(json.dumps(self.record))
+        del bad["images"][0]["runtimeDiffers"]
+        del bad["images"][0]["runtimeDigests"]
+        problems = " ".join(promotion_record.validate_record(bad))
+        self.assertIn("runtimeDiffers", problems)
+        self.assertIn("runtimeDigests", problems)
+
+    def test_digest_source_runtime_is_rejected(self):
+        bad = json.loads(json.dumps(self.record))
+        bad["images"][0]["digestSource"] = "runtime"
+        self.assertIn("digestSource", " ".join(promotion_record.validate_record(bad)))
 
     def test_a_disabled_gpu_component_is_skipped(self):
         listed = " ".join(self.images()) + json.dumps(self.record["notScanned"])

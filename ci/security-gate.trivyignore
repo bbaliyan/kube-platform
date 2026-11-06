@@ -8,3 +8,4 @@
 # and blocks the gate.
 
 image registry.k8s.io/pause exp:2027-01-31 reason:static binary, no OS packages
+image docker.io/library/busybox exp:2027-01-31 reason:no OS release and no package database, so Trivy has nothing to match (verified with Trivy 0.76.1); its CVEs are not scanned

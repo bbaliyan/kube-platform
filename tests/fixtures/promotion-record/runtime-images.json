@@ -14,5 +14,21 @@
   {
     "image": "quay.io/cilium/cilium:v1.20.4",
     "imageID": "quay.io/cilium/cilium@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  {
+    "image": "quay.io/argoproj/argocd:v3.6.0",
+    "imageID": "docker.io/library/import-2026-11-06@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  {
+    "image": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "imageID": "quay.io/cilium/hubble-ui@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  },
+  {
+    "image": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "imageID": "docker.io/library/import-2026-11-06@sha256:8888888888888888888888888888888888888888888888888888888888888888"
+  },
+  {
+    "image": "docker.io/library/alpine:3.23",
+    "imageID": "docker.io/library/alpine@sha256:7777777777777777777777777777777777777777777777777777777777777777"
   }
 ]

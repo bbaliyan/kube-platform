@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: prometheus-hook-mixed
+  namespace: prometheus
+  annotations:
+    helm.sh/hook: post-install, test-success
+spec:
+  containers:
+    - name: probe
+      image: docker.io/library/nginx:1.29

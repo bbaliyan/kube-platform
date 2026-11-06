@@ -26,8 +26,14 @@ Images come from two places, and the record holds the union:
             registry. The GPU driver tag is the one in the ClusterPolicy; the
             operator adds an OS suffix on the node, which the runtime list
             cannot show here because kind has no GPU.
-  runtime   the images that running containers report. The digest in imageID
-            is what the node pulled, so it wins over the registry.
+  runtime   the images that running containers report. A container whose image
+            field is only an image ID (the kubelet shows sha256:... for an image
+            that a digest pins) is named by the repository in its imageID.
+
+Test hooks. An image that only objects with the annotation `helm.sh/hook: test`
+(or test-success, test-failure, and no other phase) reference, and that no container of the kind run used, is not in `images`. A
+`helm test` pod never runs in a cluster unless someone runs `helm test`, and
+Argo CD does not run it. Such an image is listed in notScanned as `test-only`.
 
 Charts come from the Application sources and from the dependencies in
 Chart.yaml files of this repo. The chart digest is the digest of the chart
@@ -40,10 +46,16 @@ builds the tag on the node (the GPU driver: the ClusterPolicy names 595.91.07,
 the registry only has 595.91.07-ubuntu24.04 and the like). A component of the
 ClusterPolicy with enabled: false is skipped.
 
-Each image has a digestSource. runtime: the digest of a running container, as
-the node pulled it. registry: the digest the registry returned for the tag
-when the record was built, or the digest written in the manifest. A registry
-digest says what the tag points at now, not that any node pulled it.
+Every image has one digest, and the registry serves it. That is the digest the
+security gate scans. digestSource says how the record got it. registry: the
+registry returned it for the tag when the record was built (the digest of the
+image index, as `docker buildx imagetools inspect` prints it). pinned: the
+digest is written in the reference, and the registry served it when the record
+was built. The node may have pulled another digest. The kind run loads its
+images from single-platform archives, so the imageID of a running container
+can be a digest that no registry serves. That digest is kept apart in
+runtimeDigests, with runtimeDiffers true when it is not the record digest. It
+is information only and nothing scans it.
 
 The scanner fields stay null. The security gate fills them in.
 
@@ -70,12 +82,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from render import load_docs  # noqa: E402
 
 SCHEMA = Path(__file__).resolve().parent / "promotion-record.schema.json"
-SCHEMA_VERSION = 1
+# 2: digest is always a digest the registry serves; digestSource is registry or
+# pinned; runtimeDigests and runtimeDiffers are new; notScanned has test-only.
+SCHEMA_VERSION = 2
 SKIP_KINDS = {"CustomResourceDefinition", "Application", "ConfigMap", "Secret"}
 KNOWN_REGISTRIES = {"docker.io", "ghcr.io", "quay.io", "gcr.io", "registry.k8s.io", "k8s.gcr.io", "nvcr.io",
                     "public.ecr.aws", "mcr.microsoft.com", "registry.gitlab.com", "lscr.io", "cgr.dev",
                     "localhost"}
 KNOWN_REGISTRY_SUFFIXES = (".gcr.io", ".pkg.dev", ".amazonaws.com")
+TEST_HOOKS = {"test", "test-success", "test-failure"}
+IMAGE_ID = re.compile(r"^(sha256:)?[a-f0-9]{64}$")
 VERSION_TAG = re.compile(r"^v?\d[\w.-]*$")
 PLUGIN_ENV = re.compile(r"^GF_(INSTALL_PLUGINS|PLUGINS_PREINSTALL(_SYNC|_ASYNC)?)$")
 DIGEST = r"sha256:[a-f0-9]{64}"
@@ -204,10 +220,25 @@ def plugins_in(objs):
     return found
 
 
+def is_test_hook(obj):
+    """True when every hook phase of the object is a test phase. An object that
+    also has a phase such as post-install runs in a cluster."""
+    hooks = ((obj.get("metadata") or {}).get("annotations") or {}).get("helm.sh/hook") or ""
+    phases = {h.strip() for h in str(hooks).split(",") if h.strip()}
+    return bool(phases) and phases <= TEST_HOOKS
+
+
 def read_rendered(rendered):
     """(rendered image references, the ones composed by an operator, Applications,
-    plugin names)."""
-    images, composed, apps, plugins = set(), set(), [], set()
+    plugin names). The references include those of helm test objects."""
+    images, test_images, composed, apps, plugins = read_rendered_split(rendered)
+    return images | test_images, composed, apps, plugins
+
+
+def read_rendered_split(rendered):
+    """(image references of the other objects, image references of helm test
+    objects, the ones composed by an operator, Applications, plugin names)."""
+    images, test_images, composed, apps, plugins = set(), set(), set(), [], set()
     for app_dir in sorted(p for p in Path(rendered).glob("*/*") if p.is_dir()):
         objs = [d for f in sorted(app_dir.glob("*.yaml"))
                 for d in load_docs(f.read_text(encoding="utf-8"))]
@@ -216,9 +247,9 @@ def read_rendered(rendered):
             if o.get("kind") == "ClusterPolicy":
                 composed |= images_in(o, operator_policy=True)
             elif o.get("kind") not in SKIP_KINDS:
-                images |= images_in(with_plan_tags(o))
+                (test_images if is_test_hook(o) else images).update(images_in(with_plan_tags(o)))
         plugins |= plugins_in(objs)
-    return images, composed - images, apps, plugins
+    return images, test_images, composed - images - test_images, apps, plugins
 
 
 def chart_requests(apps, repo_root):
@@ -303,15 +334,27 @@ def reference(parsed):
 
 
 def runtime_images(path):
-    """{reference: digest or None} from the pods' image and imageID."""
+    """{reference: set of digests the nodes report} from the pods' image and
+    imageID. An image that is only an ID (sha256:...) takes its name from the
+    imageID, which then is repository@digest. An imageID of the import-*
+    repository (a preloaded archive) names no registry, so the digest is kept
+    for the image field's reference only."""
     found = {}
     for item in json.loads(Path(path).read_text(encoding="utf-8")):
-        parsed = parse_ref(item["image"]) if item.get("image") else None
+        image = item.get("image") or ""
+        m = re.search(r"^(.*)@(" + DIGEST + ")$", item.get("imageID") or "")
+        if IMAGE_ID.match(image):
+            named = m and not re.search(r"/import-[\d-]+$", m[1])
+            parsed = parse_ref(f"{m[1]}@{m[2]}") if named else None
+        else:
+            parsed = parse_ref(image) if image else None
         if not parsed:
             continue
-        ref = reference(parsed)
-        m = re.search("@(" + DIGEST + ")$", item.get("imageID") or "")
-        found[ref] = parsed[2] or (m[1] if m else found.get(ref))
+        digests = found.setdefault(reference(parsed), set())
+        if parsed[2]:
+            digests.add(parsed[2])
+        elif m:
+            digests.add(m[2])
     return found
 
 
@@ -338,44 +381,59 @@ def merge_entries(entries):
     merged = []
     for (name, digest), members in sorted(groups.items()):
         sources = sorted({x for _, e in members for x in e["sources"]})
-        source = "runtime" if any(e["digestSource"] == "runtime" for _, e in members) else "registry"
+        source = "pinned" if any(e["digestSource"] == "pinned" for _, e in members) else "registry"
+        runtime = sorted({d for _, e in members for d in e["runtimeDigests"]})
         ref = members[0][0] if len(members) == 1 else f"{name}@{digest}"
-        merged.append({"reference": ref, "digest": digest, "digestSource": source, "sources": sources})
+        merged.append({"reference": ref, "digest": digest, "digestSource": source, "sources": sources,
+                       "runtimeDigests": runtime, "runtimeDiffers": any(d != digest for d in runtime)})
     return merged
 
 
 def build(args):
-    images, composed, apps, plugins = read_rendered(args.rendered)
+    images, test_images, composed, apps, plugins = read_rendered_split(args.rendered)
     runtime = runtime_images(args.runtime)
     entries, soft = {}, set()
-    for ref in images | composed:
+
+    def entry_key(ref):
         parsed = parse_ref(ref)
         # A tag written beside a digest adds nothing the digest does not say.
-        key = reference((parsed[0], None if parsed[2] else parsed[1], parsed[2]))
-        entry = entries.setdefault(key, {"digest": parsed[2], "digestSource": "registry", "sources": set()})
+        return reference((parsed[0], None if parsed[2] else parsed[1], parsed[2]))
+
+    def entry_for(ref):
+        key, pinned = entry_key(ref), parse_ref(ref)[2]
+        return key, entries.setdefault(key, {"digest": pinned, "digestSource": "pinned" if pinned else "registry",
+                                             "sources": set(), "runtimeDigests": set()})
+
+    for ref in images | composed:
+        key, entry = entry_for(ref)
         entry["sources"].add("rendered")
         if ref in composed:
             soft.add(key)
-    for ref, digest in runtime.items():
-        entry = entries.setdefault(ref, {"digest": None, "digestSource": "registry", "sources": set()})
+    for ref, digests in runtime.items():
+        key, entry = entry_for(ref)
         entry["sources"].add("runtime")
-        soft.discard(ref)
-        if digest:
-            entry["digest"], entry["digestSource"] = digest, "runtime"
+        entry["runtimeDigests"] |= digests
+        soft.discard(key)
+    # An image that only a helm test object names, and no container of the kind run used, is not scanned.
+    test_only = sorted({entry_key(r) for r in test_images} - set(entries))
 
     charts = sorted(chart_requests(apps, args.repo_root))
     errors, unresolved, chart_digests = [], set(), {}
     with ThreadPoolExecutor(max_workers=4) as pool:
-        pending_images = {ref: pool.submit(retry, lambda r=ref: registry_digest(r), ref)
-                          for ref, e in entries.items() if not e["digest"]}
+        # A pinned digest is asked for too: the record never holds a digest the registry does not serve.
+        pending_images = {ref: pool.submit(retry, lambda r=ref: registry_digest(r), ref) for ref in entries}
         pending_charts = {c: pool.submit(retry, lambda c=c: chart_digest(*c), f"chart {c[1]} {c[2]}")
                           for c in charts}
         for ref, fut in pending_images.items():
             try:
-                entries[ref]["digest"] = fut.result()
+                served = fut.result()
+                if entries[ref]["digest"] and served != entries[ref]["digest"]:
+                    raise RuntimeError(f"{ref}: the registry returned {served}")
+                entries[ref]["digest"] = served
             except RuntimeError as e:
                 # An operator builds some tags on the node (the GPU driver adds the OS).
-                if ref in soft:
+                # A digest is never built on the node, so a pinned one must be served.
+                if ref in soft and not entries[ref]["digest"]:
                     unresolved.add(ref)
                 else:
                     errors.append(str(e))
@@ -395,6 +453,9 @@ def build(args):
     not_scanned += [{"type": "unresolved-image", "name": ref,
                      "reason": "the registry has no such tag; the operator builds the tag on the node"}
                     for ref in sorted(unresolved)]
+    not_scanned += [{"type": "test-only", "name": ref,
+                     "reason": "only an object with helm.sh/hook: test uses it; it runs only when someone runs helm test"}
+                    for ref in test_only]
     record = {
         "schemaVersion": SCHEMA_VERSION,
         "commit": args.commit or run(["git", "rev-parse", "HEAD"]),
@@ -409,8 +470,9 @@ def build(args):
         sys.exit("record does not match its schema:\n  " + "\n  ".join(problems))
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-    print(f"wrote {args.out}: {len(record['images'])} images, {len(record['charts'])} charts, "
-          f"{len(record['notScanned'])} not scanned")
+    differ = sum(i["runtimeDiffers"] for i in record["images"])
+    print(f"wrote {args.out}: {len(record['images'])} images ({differ} with a runtime digest that differs), "
+          f"{len(record['charts'])} charts, {len(record['notScanned'])} not scanned")
 
 
 def main():
