@@ -185,12 +185,20 @@ is not blocked by a vulnerability found later. The daily rescan reports those.
 
 It fails closed. It blocks when:
 
-- the Trivy database is older than 48 hours, or Trivy cannot report its version
+- the Trivy database is older than 48 hours or dated in the future, cannot be
+  downloaded, or Trivy cannot report its version
 - an image of the record has no scan result, or its scan failed
-- the KEV file is missing, is not a CISA catalog, or is older than 21 days
-- an ignore entry has expired or has no reason
-- the `stable` record has no `scan` summary (a first promotion uses an empty
-  `BASELINE_RECORD`)
+- Trivy detects nothing in an image (no results and no operating system)
+- the KEV file is missing, is not a CISA catalog, is older than 21 days or is
+  dated in the future
+- an ignore entry has a bad ID, has expired, has no reason, or expires more than
+  90 days from today
+- the baseline is not a valid record, its verdict is not `pass`, or it did not
+  scan every image it lists
+
+The baseline is always explicit. Pass `BASELINE_RECORD=<the stable record>`. If
+no `stable` exists yet, pass `FIRST_PROMOTION=1` instead. With neither, or with
+both, `make security-gate` fails.
 
 The gate writes the Trivy version and the database time into `scanner`, and
 adds a `scan` object to the record: the verdict, the reasons, the counts, and
@@ -202,7 +210,8 @@ To run it:
 
 1. Build `out/promotion-record.json`. See "Promotion record".
 2. Run `make kev-catalog`. It downloads the CISA catalog to `out/kev.json`.
-3. Run `make security-gate BASELINE_RECORD=<the stable record>`. It needs
+3. Run `make security-gate BASELINE_RECORD=<the stable record>`. For the first
+   promotion, run `make security-gate FIRST_PROMOTION=1`. It needs
    `trivy` and the network. It writes `out/promotion-record-scanned.json` and
    `out/security-summary.md`, and it exits 1 when it blocks.
 
@@ -210,20 +219,28 @@ To accept a finding for a while, add a line to `ci/security-gate.trivyignore`:
 
     CVE-2026-0001 exp:2027-01-31 reason:no upstream fix, not reachable
 
-The date and the reason are both required. `make check-trivyignore` (part of
-`make test-commit`) fails on an expired entry or an entry without a reason. The
-gate applies the file itself, so an ignored finding stays visible in the record.
+The ID, the reason and the date are all required. The date must be within
+90 days of today. `make check-trivyignore` (part of `make test-commit`) fails
+on an expired or incomplete entry. The gate applies the file itself, so an
+ignored finding stays visible in the record.
+
+An ignore entry can silence a KEV finding. It is also the only way out when
+`stable` holds a KEV finding, because the KEV rule blocks even a promotion that
+changes nothing. Review each entry that names a KEV vulnerability.
 
 `make test-security-gate` (part of `make test-scripts`) runs
 `tests/check-security-gate.py`. It tests the decisions with synthetic results,
 and the parsing with a trimmed real Trivy report and a stand-in `trivy`.
 
 In CI, the `gate` job runs after `record` on pushes to `main` and manual runs,
-not on PRs. It is not a required check. It has no baseline yet, so only a KEV
-finding blocks there. The promote workflow passes the `stable` record.
+not on PRs. It is not a required check. It runs with `FIRST_PROMOTION=1`, so
+only a KEV finding blocks there. The promote workflow must pass
+`BASELINE_RECORD=<the stable record>`. It must also run the gate from trusted
+code (a checkout of `main`, not the candidate), because the candidate could
+change the gate or the ignore file.
 The optional secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a read-only
 token) log in to Docker Hub for the pulls, so the shared runner address is not
-rate limited. The login is written for `index.docker.io` only, so no other
+rate limited. Set both or neither. The login is written for `index.docker.io` only, so no other
 registry receives it.
 
 ## Example clusters

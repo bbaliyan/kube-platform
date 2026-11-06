@@ -32,16 +32,23 @@ not blocked by a vulnerability that was found later. The daily rescan reports
 those.
 
 Fail closed (block) when:
-  - Trivy cannot report its version, or its database is older than 48 hours;
+  - Trivy cannot report its version, its database is older than 48 hours, or the
+    database time is in the future;
+  - the database cannot be downloaded;
   - an image of the record has no scan result, or its scan failed;
-  - the KEV file is missing, unreadable or older than 21 days;
-  - an ignore entry has no reason, no valid expiry date, or has expired;
-  - the baseline has no scan summary (use --no-baseline for the first promotion).
+  - Trivy detects nothing in an image (no results and no operating system), so
+    an image it could not read never looks clean;
+  - the KEV file is missing, unreadable, older than 21 days or dated in the future;
+  - an ignore entry has a bad ID, no reason, no valid expiry date, an expiry
+    more than 90 days away, or has expired;
+  - the baseline is not a valid record, its verdict is not pass, or it did not
+    scan every image it lists. The baseline must be named: --no-baseline is only
+    for the first promotion, and the caller must choose it on purpose.
 
 The ignore file has one entry per line, in the .trivyignore style:
     CVE-2026-0001 exp:2027-01-31 reason:no upstream fix, not reachable
 An ignored finding stays in the record with the status "ignored". It does not
-block.
+block. An entry can silence a KEV finding too.
 """
 
 import argparse
@@ -63,6 +70,9 @@ BLOCKING_SEVERITIES = {"HIGH", "CRITICAL"}
 MAX_SUMMARY_ROWS = 40
 EXPIRY = re.compile(r"(?:^|\s)exp:(\S+)")
 REASON = re.compile(r"(?:^|\s)reason:(.*\S)")
+VULN_ID = re.compile(r"^(CVE-\d{4}-\d{4,}|GHSA(-[a-z0-9]{4}){3})$")
+MAX_IGNORE_DAYS = 90
+SEVERITY_RANK = {"UNKNOWN": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 
 
 def parse_time(text):
@@ -88,13 +98,24 @@ def load_ignore(path, today):
             expires = date.fromisoformat(expiry[1]) if expiry else None
         except ValueError:
             expires = None
+        bad = False
+        if not VULN_ID.match(vuln_id):
+            problems.append(f"{path}:{number}: {vuln_id} is not a CVE or GHSA id")
+            bad = True
         if expires is None:
             problems.append(f"{path}:{number}: {vuln_id} has no valid exp:YYYY-MM-DD date")
+            bad = True
         elif expires < today:
             problems.append(f"{path}:{number}: {vuln_id} expired on {expires}")
+            bad = True
+        elif (expires - today).days > MAX_IGNORE_DAYS:
+            problems.append(f"{path}:{number}: {vuln_id} expires on {expires}, "
+                            f"more than {MAX_IGNORE_DAYS} days from today")
+            bad = True
         if not reason:
             problems.append(f"{path}:{number}: {vuln_id} has no reason:<text>")
-        if expires is not None and expires >= today and reason:
+            bad = True
+        if not bad:
             entries[vuln_id] = reason[1]
     return entries, problems
 
@@ -104,24 +125,35 @@ def load_ignore(path, today):
 def run(cmd, timeout):
     res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout)
     if res.returncode != 0:
-        raise RuntimeError((res.stderr.strip().splitlines() or [f"{cmd[0]} exited {res.returncode}"])[-1])
+        tail = " | ".join(res.stderr.strip().splitlines()[-3:]) or f"{cmd[0]} exited {res.returncode}"
+        raise RuntimeError(tail)
     return res.stdout
 
 
 def findings_of(report):
-    """Findings of a Trivy JSON report, one per vulnerability and package."""
+    """Findings of a Trivy JSON report, one per vulnerability and package. The
+    same pair can appear in several targets (a binary and the package that
+    ships it). The merged finding keeps a fix if any instance has one, and the
+    highest severity, so a fixable instance is never hidden by an unfixable one."""
     if not isinstance(report, dict) or "SchemaVersion" not in report or "ArtifactName" not in report:
         raise RuntimeError("the output is not a Trivy report")
+    if not report.get("Results") and not (report.get("Metadata") or {}).get("OS"):
+        raise RuntimeError("no packages detected: Trivy found no results and no operating system")
     found = {}
     for result in report.get("Results") or []:
         for v in result.get("Vulnerabilities") or []:
-            found[(v["VulnerabilityID"], v["PkgName"])] = {
+            new = {
                 "id": v["VulnerabilityID"],
                 "package": v["PkgName"],
                 "installedVersion": v.get("InstalledVersion", ""),
                 "fixedVersion": v.get("FixedVersion") or None,
                 "severity": v.get("Severity", "UNKNOWN"),
             }
+            old = found.setdefault((new["id"], new["package"]), new)
+            if old is not new:
+                old["fixedVersion"] = old["fixedVersion"] or new["fixedVersion"]
+                if SEVERITY_RANK.get(new["severity"], 0) > SEVERITY_RANK.get(old["severity"], 0):
+                    old["severity"] = new["severity"]
     return sorted(found.values(), key=lambda f: (f["id"], f["package"]))
 
 
@@ -132,7 +164,7 @@ def scan_image(entry, attempts):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp, "report.json")
             try:
-                run(["trivy", "image", "--quiet", "--scanners", "vuln", "--image-src", "remote",
+                run(["trivy", "image", "--skip-db-update", "--scanners", "vuln", "--image-src", "remote",
                      "--cache-backend", "memory", "--format", "json", "--output", str(out), target], 1200)
                 return {"reference": entry["reference"], "digest": entry["digest"], "error": None,
                         "findings": findings_of(json.loads(out.read_text(encoding="utf-8")))}
@@ -153,8 +185,14 @@ def scanner_info():
 
 def scan(args):
     record = json.loads(Path(args.record).read_text(encoding="utf-8"))
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        results = list(pool.map(lambda e: scan_image(e, args.attempts), record["images"]))
+    # One download before the workers, so they do not race for the database.
+    try:
+        run(["trivy", "image", "--download-db-only"], 900)
+        with ThreadPoolExecutor(max_workers=args.workers) as pool:
+            results = list(pool.map(lambda e: scan_image(e, args.attempts), record["images"]))
+    except (RuntimeError, OSError, subprocess.TimeoutExpired) as e:
+        results = [{"reference": i["reference"], "digest": i["digest"], "findings": [],
+                    "error": f"the database download failed: {e}"} for i in record["images"]]
     scanner, scanner_error = scanner_info()
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(
@@ -176,9 +214,26 @@ def kev_ids(kev, now):
         return set(), "the KEV file is not a CISA catalog"
     if not ids:
         return set(), "the KEV file lists no vulnerabilities"
+    if released - now > timedelta(days=1):
+        return set(), f"the KEV file is dated in the future ({released:%Y-%m-%d})"
     if now - released > MAX_KEV_AGE:
         return set(), f"the KEV file is older than {MAX_KEV_AGE.days} days (released {released:%Y-%m-%d})"
     return ids, None
+
+
+def baseline_problem(baseline):
+    """Why a record cannot be the baseline, or None."""
+    problems = validate_record(baseline)
+    if problems:
+        return "it does not match the schema (" + problems[0] + ")"
+    scan = baseline.get("scan")
+    if not scan:
+        return "it has no scan summary"
+    if scan["verdict"] != "pass":
+        return "its verdict is not pass"
+    if scan["imagesScanned"] != scan["imagesListed"] or scan["imagesListed"] != len(baseline["images"]):
+        return "it did not scan every image it lists"
+    return None
 
 
 def decide(record, scan_data, kev, ignored, ignore_problems, baseline, now):
@@ -194,7 +249,9 @@ def decide(record, scan_data, kev, ignored, ignore_problems, baseline, now):
         except (KeyError, TypeError, ValueError):
             age = None
             reasons.append("the Trivy database time is unreadable")
-        if age is not None and age > MAX_DATABASE_AGE:
+        if age is not None and age < timedelta(0):
+            reasons.append("the Trivy database time is in the future")
+        elif age is not None and age > MAX_DATABASE_AGE:
             reasons.append(f"the Trivy database is {age.total_seconds() / 3600:.0f} hours old "
                            f"(the limit is {MAX_DATABASE_AGE.total_seconds() / 3600:.0f})")
     kev_set, kev_problem = kev_ids(kev, now)
@@ -213,10 +270,13 @@ def decide(record, scan_data, kev, ignored, ignore_problems, baseline, now):
 
     baseline_digests, baseline_keys = set(), set()
     if baseline is not None:
-        if "scan" not in baseline:
-            reasons.append("the baseline record has no scan summary")
-        baseline_digests = {i["digest"] for i in baseline["images"]}
-        baseline_keys = {(f["image"], f["id"], f["package"]) for f in (baseline.get("scan") or {}).get("findings", [])}
+        problem = baseline_problem(baseline)
+        if problem:
+            reasons.append(f"the baseline is not usable: {problem}")
+        else:
+            # A passing baseline scanned every image it lists, so each digest has results.
+            baseline_digests = {i["digest"] for i in baseline["images"]}
+            baseline_keys = {(f["image"], f["id"], f["package"]) for f in baseline["scan"]["findings"]}
 
     findings, others = [], 0
     for digest in scanned:
@@ -249,7 +309,7 @@ def decide(record, scan_data, kev, ignored, ignore_problems, baseline, now):
     out["scan"] = {
         "scannedAt": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "verdict": "block" if reasons else "pass",
-        "baselineCommit": baseline["commit"] if baseline else None,
+        "baselineCommit": baseline.get("commit") if baseline else None,
         "imagesListed": len(listed),
         "imagesScanned": len(scanned),
         "counts": {"blocking": count("blocking"), "known": count("known"), "ignored": count("ignored"),

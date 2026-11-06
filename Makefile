@@ -82,13 +82,16 @@ commit-messages:
 #   test-security-gate   fixture tests of ci/security_gate.py (part of test-scripts)
 #   check-trivyignore    expiry and reason of every ci/security-gate.trivyignore entry
 # security-gate needs out/promotion-record.json and out/kev.json (make kev-catalog).
-#   BASELINE_RECORD  the promotion record of the current stable; empty means
-#                    the first promotion, where only a KEV finding blocks
+#   BASELINE_RECORD  the promotion record of the current stable
+#   FIRST_PROMOTION  set to 1 when no stable exists yet: the delta is skipped and
+#                    only a KEV finding blocks. Set exactly one of the two;
+#                    with neither, or both, the target fails.
 .PHONY: test-security-gate check-trivyignore kev-catalog security-gate
 test-commit: check-trivyignore
 test-scripts: test-security-gate
 KEV_URL ?= https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
 BASELINE_RECORD ?=
+FIRST_PROMOTION ?=
 
 test-security-gate:
 	tests/check-security-gate.py
@@ -101,6 +104,8 @@ kev-catalog:
 	curl -fsSL --retry 3 --retry-all-errors -o out/kev.json "$(KEV_URL)"
 
 security-gate:
+	@if [ -n "$(BASELINE_RECORD)" ] && [ -n "$(FIRST_PROMOTION)" ]; then 		echo "set BASELINE_RECORD or FIRST_PROMOTION=1, not both" >&2; exit 1; fi
+	@if [ -z "$(BASELINE_RECORD)" ] && [ -z "$(FIRST_PROMOTION)" ]; then 		echo "set BASELINE_RECORD=<the stable record>, or FIRST_PROMOTION=1 if no stable exists" >&2; exit 1; fi
 	python3 ci/security_gate.py scan --record out/promotion-record.json --out out/scan-results.json
 	status=0; \
 	python3 ci/security_gate.py decide --record out/promotion-record.json --scan out/scan-results.json \

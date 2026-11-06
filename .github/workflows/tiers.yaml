@@ -128,7 +128,7 @@ jobs:
 
   # Not a required check. It scans the images of the promotion record with
   # Trivy from the pinned kube-devenv image, and it needs no cluster. It
-  # compares nothing yet: the baseline is empty until a stable record exists, so
+  # compares nothing yet: FIRST_PROMOTION=1 until a stable record exists, so
   # only a CISA KEV finding blocks. See "Security gate" in ci/README.md.
   # The Docker Hub token is read-only and only stops rate limits on shared
   # runner addresses. Without it the scans run anonymously.
@@ -154,18 +154,28 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          [ -n "$DOCKERHUB_TOKEN" ] || exit 0
+          [ -n "$DOCKERHUB_USERNAME$DOCKERHUB_TOKEN" ] || exit 0
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "set both DOCKERHUB_USERNAME and DOCKERHUB_TOKEN, or neither" >&2
+            exit 1
+          fi
           mkdir -p "$DOCKER_CONFIG"
           auth="$(printf '%s:%s' "$DOCKERHUB_USERNAME" "$DOCKERHUB_TOKEN" | base64 -w0)"
           printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}' "$auth" > "$DOCKER_CONFIG/config.json"
       - run: make kev-catalog
-      - run: make security-gate
+      - run: make security-gate FIRST_PROMOTION=1
+      # Only a pass uploads the scanned record, so its name never hides a block.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ success() }}
+        with:
+          name: promotion-record-scanned
+          path: out/promotion-record-scanned.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
-          name: promotion-record-scanned
+          name: security-gate-report
           path: |
-            out/promotion-record-scanned.json
             out/security-summary.md
             out/scan-results.json
+            out/promotion-record-scanned.json
           if-no-files-found: ignore

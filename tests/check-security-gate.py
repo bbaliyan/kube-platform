@@ -12,6 +12,7 @@ a stand-in `trivy` for the scan command.
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -217,6 +218,33 @@ class Decision(unittest.TestCase):
         self.assertEqual(out["scanner"], {"name": "trivy", "version": "0.76.1", "databaseUpdatedAt": FRESH_DB})
         self.assertIn("blocking", security_gate.summary_of(out))
 
+    def test_a_negative_database_age_blocks(self):
+        cand = image(APP, D2)
+        _, reasons = decide(record(cand), scan_of(result(cand), db="2026-11-07T00:00:00Z"), baseline=self.baseline())
+        self.assertEqual(len(reasons), 1)
+        self.assertIn("future", reasons[0])
+
+    def test_a_kev_file_dated_in_the_future_blocks(self):
+        cand = image(APP, D2)
+        _, reasons = decide(record(cand), scan_of(result(cand)),
+                            kev=kev_of("CVE-2000-0001", released="2026-12-01T00:00:00Z"), baseline=self.baseline())
+        self.assertEqual(len(reasons), 1)
+        self.assertIn("future", reasons[0])
+
+    def test_a_baseline_that_is_not_usable_blocks(self):
+        cand = image(APP, D2)
+        good = self.baseline()
+        blocked = json.loads(json.dumps(good))
+        blocked["scan"]["verdict"] = "block"
+        partial = json.loads(json.dumps(good))
+        partial["scan"]["imagesScanned"] = 0
+        broken = json.loads(json.dumps(good))
+        del broken["commit"]
+        for name, baseline in (("blocked", blocked), ("partial", partial), ("invalid", broken)):
+            _, reasons = decide(record(cand), scan_of(result(cand)), baseline=baseline)
+            self.assertEqual(len(reasons), 1, name)
+            self.assertIn("baseline is not usable", reasons[0])
+
     def test_the_schema_still_accepts_a_record_without_a_scan(self):
         self.assertEqual(promotion_record.validate_record(record(image(APP, D1))), [])
 
@@ -269,6 +297,19 @@ class IgnoreFile(unittest.TestCase):
     def test_the_check_passes_on_a_valid_file(self):
         self.assertEqual(self.run_check("CVE-2026-0001 exp:2026-12-01 reason:x\n").returncode, 0)
 
+    def test_a_bad_id_is_a_problem(self):
+        entries, problems = self.load("everything exp:2026-12-01 reason:x\nCVE-26-1 exp:2026-12-01 reason:x\n")
+        self.assertEqual((entries, len(problems)), ({}, 2))
+
+    def test_a_ghsa_id_is_accepted(self):
+        self.assertEqual(self.load("GHSA-hrxh-6v49-42gf exp:2026-12-01 reason:x\n")[1], [])
+
+    def test_an_expiry_more_than_90_days_away_is_a_problem(self):
+        self.assertEqual(self.load("CVE-2026-0001 exp:2027-02-04 reason:x\n")[1], [])
+        entries, problems = self.load("CVE-2026-0001 exp:2027-02-05 reason:x\n")
+        self.assertEqual(entries, {})
+        self.assertIn("more than 90 days", problems[0])
+
     def test_the_ignore_file_of_the_repo_passes(self):
         res = subprocess.run([sys.executable, "-I", str(GATE), "check-ignore", str(ROOT / "ci/security-gate.trivyignore")],
                              capture_output=True, text=True)
@@ -285,8 +326,25 @@ class TrivyReport(unittest.TestCase):
              "fixedVersion": "1.16.14, 1.17.7", "severity": "CRITICAL"},
         ])
 
-    def test_a_clean_report_has_no_findings(self):
-        self.assertEqual(security_gate.findings_of({"SchemaVersion": 2, "ArtifactName": "x"}), [])
+    def test_a_clean_report_with_an_operating_system_has_no_findings(self):
+        self.assertEqual(security_gate.findings_of(
+            {"SchemaVersion": 2, "ArtifactName": "x", "Metadata": {"OS": {"Family": "alpine"}}}), [])
+
+    def test_a_report_with_no_results_and_no_operating_system_is_an_error(self):
+        report = json.loads((FIXTURES / "trivy-empty.json").read_text(encoding="utf-8"))
+        with self.assertRaisesRegex(RuntimeError, "no packages detected"):
+            security_gate.findings_of(report)
+
+    def test_a_duplicate_finding_keeps_the_fix_and_the_highest_severity(self):
+        def target(**v):
+            return {"Vulnerabilities": [dict({"VulnerabilityID": "CVE-2026-0001", "PkgName": "stdlib",
+                                              "InstalledVersion": "1.0"}, **v)]}
+        for order in (({"Severity": "HIGH"}, {"Severity": "CRITICAL", "FixedVersion": "2.0"}),
+                      ({"Severity": "CRITICAL", "FixedVersion": "2.0"}, {"Severity": "HIGH"})):
+            report = {"SchemaVersion": 2, "ArtifactName": "x", "Results": [target(**v) for v in order]}
+            self.assertEqual(security_gate.findings_of(report), [
+                {"id": "CVE-2026-0001", "package": "stdlib", "installedVersion": "1.0", "fixedVersion": "2.0",
+                 "severity": "CRITICAL"}])
 
     def test_output_that_is_not_a_report_is_an_error(self):
         with self.assertRaises(RuntimeError):
@@ -305,9 +363,9 @@ class Commands(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def gate(self, *args, db=FRESH_DB):
+    def gate(self, *args, db=FRESH_DB, report="trivy-report.json", db_fail=False):
         env = dict(os.environ, PATH=f"{FIXTURES / 'bin'}{os.pathsep}{os.environ['PATH']}",
-                   STUB_DB_UPDATED_AT=db, STUB_REPORT=str(FIXTURES / "trivy-report.json"))
+                   STUB_DB_UPDATED_AT=db, STUB_REPORT=str(FIXTURES / report), STUB_DB_FAIL="1" if db_fail else "0")
         return subprocess.run([sys.executable, "-I", str(GATE), *map(str, args)],
                               capture_output=True, text=True, env=env)
 
@@ -316,9 +374,10 @@ class Commands(unittest.TestCase):
         path.write_text(json.dumps(data) if not isinstance(data, str) else data, encoding="utf-8")
         return path
 
-    def scan_and_decide(self, rec, db=FRESH_DB, kev=None):
+    def scan_and_decide(self, rec, db=FRESH_DB, kev=None, **options):
         rec_path = self.write("record.json", rec)
-        scan = self.gate("scan", "--record", rec_path, "--out", self.dir / "scan.json", "--attempts", 1, db=db)
+        scan = self.gate("scan", "--record", rec_path, "--out", self.dir / "scan.json", "--attempts", 1, db=db,
+                         **options)
         self.assertEqual(scan.returncode, 0, scan.stderr)
         ignore = self.write("ignore", "")
         return self.gate("decide", "--record", rec_path, "--scan", self.dir / "scan.json",
@@ -357,11 +416,22 @@ class Commands(unittest.TestCase):
         self.assertEqual(res.returncode, 1)
         self.assertIn("CVE-2022-23806", res.stdout)
 
+    def test_an_image_with_no_packages_detected_blocks_the_run(self):
+        res = self.scan_and_decide(record(image(APP, D1)), report="trivy-empty.json")
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("no packages detected", res.stdout)
+
+    def test_a_database_download_failure_blocks_the_run(self):
+        res = self.scan_and_decide(record(image(APP, D1)), db_fail=True)
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("failed to download the database", res.stdout)
+
     def test_a_scan_file_with_a_missing_image_blocks_the_run(self):
         rec = record(image(APP, D1), image(LIB, D2))
         self.scan_and_decide(record(image(APP, D1)))
         res = self.gate("decide", "--record", self.write("record.json", rec), "--scan", self.dir / "scan.json",
-                        "--kev", self.dir / "kev.json", "--ignore", self.dir / "ignore", "--no-baseline",
+                        "--kev", self.write("kev.json", kev_of("CVE-2000-0001", released="2026-11-05T00:00:00Z")),
+                        "--ignore", self.write("ignore", ""), "--no-baseline",
                         "--out", self.dir / "out.json", "--now", "2026-11-06T12:00:00Z")
         self.assertEqual(res.returncode, 1)
         self.assertIn("no scan result for", res.stdout)
@@ -369,11 +439,45 @@ class Commands(unittest.TestCase):
     def test_an_expired_ignore_entry_blocks_the_run(self):
         rec_path = self.write("record.json", record(image(APP, D1)))
         self.gate("scan", "--record", rec_path, "--out", self.dir / "scan.json", "--attempts", 1)
-        res = self.gate("decide", "--record", rec_path, "--scan", self.dir / "scan.json", "--kev", self.dir / "kev.json",
+        res = self.gate("decide", "--record", rec_path, "--scan", self.dir / "scan.json",
+                        "--kev", self.write("kev.json", kev_of("CVE-2000-0001", released="2026-11-05T00:00:00Z")),
                         "--ignore", self.write("expired", "CVE-2022-1664 exp:2026-10-01 reason:x\n"),
                         "--no-baseline", "--out", self.dir / "out.json", "--now", "2026-11-06T12:00:00Z")
         self.assertEqual(res.returncode, 1)
         self.assertIn("expired on 2026-10-01", res.stdout)
+
+
+class MakeTarget(unittest.TestCase):
+    """The baseline is explicit: the Makefile refuses to run the gate without a choice."""
+
+    def setUp(self):
+        if not shutil.which("make"):
+            self.skipTest("make is not installed")
+
+    def make(self, *args):
+        return subprocess.run(["make", "-C", str(ROOT), *args], capture_output=True, text=True)
+
+    def test_neither_a_baseline_nor_a_first_promotion_fails(self):
+        res = self.make("security-gate")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("BASELINE_RECORD", res.stderr)
+        self.assertNotIn("security_gate.py scan", res.stdout)
+
+    def test_both_fails(self):
+        res = self.make("security-gate", "BASELINE_RECORD=x.json", "FIRST_PROMOTION=1")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("not both", res.stderr)
+
+    def test_a_baseline_is_passed_on(self):
+        res = self.make("-n", "security-gate", "BASELINE_RECORD=x.json")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn('--baseline "x.json"', res.stdout)
+        self.assertNotIn("--no-baseline", res.stdout)
+
+    def test_a_first_promotion_passes_no_baseline(self):
+        res = self.make("-n", "security-gate", "FIRST_PROMOTION=1")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("--no-baseline", res.stdout)
 
 
 if __name__ == "__main__":
