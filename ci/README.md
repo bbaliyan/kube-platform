@@ -254,6 +254,49 @@ token) log in to Docker Hub for the pulls, so the shared runner address is not
 rate limited. Set both or neither. The login is written for `index.docker.io` only, so no other
 registry receives it.
 
+## Manifest-risk diff
+
+Image scanning cannot see a chart update that adds a hook, a privileged
+container or a wildcard role. `ci/manifest_risk.py` renders `stable` and a
+candidate commit and keeps only the changes in these classes:
+
+- `rbac`: a rule of a Role or ClusterRole, and the subjects and role of a binding.
+- `webhook`: a validating or mutating webhook.
+- `hook`: an object with a Helm or Argo CD hook annotation.
+- `privileged`: a privileged container, a `hostPath` volume or `hostNetwork`.
+- `image`: an image repository that `stable` does not use.
+- `registry`: a new image repository outside `ci/registry-allowlist.yaml`.
+  This catches a typosquat.
+
+An addition is something the candidate has and `stable` does not. A rule that
+changes counts as one removal and one addition. A new tag of a repository that
+`stable` already uses is not an addition. The scan and the daily digest check
+cover tags. A removal never needs approval.
+
+`ci/registry-allowlist.yaml` has one entry per registry. Each entry has a
+reason. It can list path prefixes, so that `grafana/` is trusted on Docker Hub
+and `grafanna/` is not.
+
+To run it:
+
+1. Run `make manifest-risk STABLE_REF=<stable commit>`. The default is `origin/stable`.
+   The checked-out commit is the candidate. The run renders both sides, so it needs the network and helm.
+
+The run writes two files to `out/manifest-risk/`. Both go to the run summary
+and to the release.
+
+- `manifest-risk.json` is the result. `needsApproval` is `true` when there is
+  any addition, and `false` when the diff is empty or has only removals. The
+  promote workflow reads this field. `additions` and `removals` list each item
+  with its class, object, detail and clusters.
+- `manifest-risk.md` is the text for the run summary.
+
+If `GITHUB_OUTPUT` is set, the script also writes `needs_approval` and
+`additions` to it. The step fails if a render is missing or empty, so a broken
+render never looks like an empty diff. `make test-commit` runs
+`tests/check-manifest-risk.py`, which uses the fixtures in
+`tests/fixtures/manifest-risk/`.
+
 ## Example clusters
 
 Each file in `clusters/` is a root `platform` Application, written the way a

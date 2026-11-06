@@ -1,0 +1,17 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: demo
+webhooks:
+  - name: inject.demo.example
+    failurePolicy: Ignore
+    clientConfig:
+      service:
+        name: injector
+        namespace: demo
+        path: /mutate
+    rules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]

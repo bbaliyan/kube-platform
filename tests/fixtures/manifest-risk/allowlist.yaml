@@ -1,0 +1,5 @@
+- registry: docker.io
+  repositories: [library/, grafana/]
+  reason: Official images and Grafana Labs.
+- registry: registry.k8s.io
+  reason: The Kubernetes project registry.

@@ -1,0 +1,1 @@
+kind/app/ClusterRole_demo-reader.yaml
