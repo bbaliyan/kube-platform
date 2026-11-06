@@ -265,8 +265,11 @@ candidate commit and keeps only the changes in these classes:
 - `webhook`: a webhook (failure policy, selectors, target, timeout, side
   effects, CA bundle), an admission policy, an APIService and a CRD
   conversion webhook.
-- `hook`: an object with a Helm or Argo CD hook annotation, with the image,
-  command and arguments of its containers.
+- `hook`: an object with a Helm or Argo CD hook annotation, with the image
+  repository, command and arguments of its containers. The image tag is left
+  out, so a version bump of a hook image needs no approval. This is the
+  accepted gap for tags below: the soak, the scan and the daily digest check
+  cover them.
 - `privileged`: privileged mode, added capabilities, privilege escalation,
   Unmasked `procMount`, Unconfined seccomp or AppArmor, `runAsUser: 0`,
   `hostPath` and local volumes, `hostNetwork`, `hostPID`, `hostIPC`,

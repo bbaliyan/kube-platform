@@ -360,6 +360,20 @@ spec: {template: {spec: {containers: [{name: c, image: "docker.io/library/busybo
         self.assertEqual(self.classes(result), ["hook"])
         self.assertIn("curl", result["additions"][0]["detail"])
 
+    def test_a_hook_image_tag_bump_alone_gives_an_empty_diff(self):
+        hook = """
+apiVersion: batch/v1
+kind: Job
+metadata: {name: h, namespace: demo, annotations: {helm.sh/hook: pre-install}}
+spec: {template: {spec: {containers: [{name: c, image: "docker.io/library/busybox:%s", command: [echo]}]}}}
+"""
+        result = self.between({"kind/app/Job_h.yaml": hook % "1.0"}, {"kind/app/Job_h.yaml": hook % "2.0"})
+        self.assertEqual((result["additions"], result["removals"]), ([], []))
+        self.assertFalse(result["needsApproval"])
+        moved = hook.replace("docker.io/library/busybox", "docker.io/library/evil")
+        result = self.between({"kind/app/Job_h.yaml": hook % "1.0"}, {"kind/app/Job_h.yaml": moved % "1.0"})
+        self.assertIn("hook", self.classes(result))
+
     def test_argocd_sources_and_projects(self):
         app = """
 apiVersion: argoproj.io/v1alpha1

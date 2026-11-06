@@ -18,8 +18,8 @@ The risk classes:
   webhook     a webhook of a webhook configuration (selectors, failure policy,
               target, CA bundle), an admission policy, an APIService, a CRD
               conversion webhook
-  hook        an object with a Helm or Argo CD hook annotation, and the image,
-              command and arguments of its containers
+  hook        an object with a Helm or Argo CD hook annotation, and the image
+              repository (not the tag), command and arguments of its containers
   privileged  privileged mode, added capabilities, privilege escalation,
               Unmasked procMount, Unconfined seccomp or AppArmor, running as
               root, hostPath and local volumes, hostNetwork, hostPID, hostIPC,
@@ -171,6 +171,12 @@ def webhook_facts(obj):
                               f"{compact(webhook.get('conversionReviewVersions'))}")
 
 
+def image_repository(ref):
+    """The image without its tag or digest: tags are covered by the soak, the scan and the drift check."""
+    parsed = parse_ref(ref)
+    return parsed[0] if parsed else ref
+
+
 def hook_facts(obj):
     annotations = dct(dct(obj.get("metadata")).get("annotations"))
     for key in HOOK_ANNOTATIONS:
@@ -179,7 +185,7 @@ def hook_facts(obj):
         yield "hook", f"{key}={annotations[key]}"
         for d in all_dicts(obj):
             if isinstance(d.get("image"), str) and d.get("name"):
-                yield "hook", (f"{key}={annotations[key]} container {d['name']} image {d['image']} "
+                yield "hook", (f"{key}={annotations[key]} container {d['name']} image {image_repository(d['image'])} "
                                f"command {compact(d.get('command'))} args {compact(d.get('args'))}")
 
 
