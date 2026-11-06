@@ -223,9 +223,12 @@ def resolve_all(record, lookup_image, lookup_chart, workers=4):
     def attempt(fn, entry):
         try:
             digest = fn(entry)
+            note = None
+            if isinstance(digest, tuple):
+                digest, note = digest
             if not DIGEST.match(str(digest)):
                 raise RuntimeError(f"unexpected digest {digest!r}")
-            return {"digest": digest, "error": None}
+            return {"digest": digest, "error": None, **({"note": note} if note else {})}
         except RuntimeError as e:
             return {"digest": None, "error": cap(e, ERROR_LIMIT)}
 
@@ -255,12 +258,35 @@ def primary_chart_digest(pr, c):
     return pr.chart_digest(c["repository"], c["name"], c["version"])
 
 
+def image_digest(pr, entry):
+    """The digest from the registry the reference names. If that lookup errors and
+    the image is a Docker Official Image, the mirrors of promotion_record.sources_of
+    may confirm the digest of the record, and only that digest: a mirror that
+    returns another digest, or errors too, leaves the image unresolved. A mirror
+    answer cannot find a tag move while the primary registry is down."""
+    ref = entry["reference"]
+    try:
+        return pr.retry(lambda: primary_digest(pr, ref), ref)
+    except RuntimeError as primary_error:
+        for source in pr.sources_of(ref)[1:]:
+            try:
+                digest = primary_digest(pr, source)
+            except RuntimeError:
+                continue
+            host = source.split("/")[0]
+            if digest != entry["digest"]:
+                raise RuntimeError(f"the primary lookup failed ({primary_error}); {host} returned another "
+                                   "digest than the record, which is not drift evidence") from None
+            return digest, f"confirmed through {host}; the primary registry did not answer"
+        raise
+
+
 def cmd_resolve(args):
     import promotion_record as pr
     record = load_json(args.record)
     result = resolve_all(
         record,
-        lambda e: pr.retry(lambda: primary_digest(pr, e["reference"]), e["reference"]),
+        lambda e: image_digest(pr, e),
         lambda c: pr.retry(lambda: primary_chart_digest(pr, c), f"chart {c['name']} {c['version']}"))
     result["resolvedAt"] = iso(datetime.now(timezone.utc))
     write_json(args.out, result)
@@ -346,6 +372,16 @@ def classify(record, new_record):
     }
 
 
+def mirror_lines(notes):
+    if not notes:
+        return []
+    lines = ["", "### Confirmed through a mirror", "",
+             "The primary registry did not answer for these images. A mirror returned the digest of the record, "
+             "so they count as resolved. While the primary registry is down, a tag move cannot be found.", ""]
+    lines += table(["Image", "Note"], [[safe(n), safe(t)] for n, t in notes[:ROW_LIMIT]])
+    return lines
+
+
 def rolling_body(ctx, groups, complete, now):
     record, meta = ctx["record"], ctx["fetch"]
     scan, scanner = ctx["scan"], ctx["scanner"]
@@ -374,6 +410,7 @@ def rolling_body(ctx, groups, complete, now):
     lines += findings_section("On the CISA KEV list", groups["kev"])
     lines += findings_section("HIGH or CRITICAL with a fix", groups["fixable"])
     lines += findings_section("HIGH or CRITICAL without a fix", groups["unfixed"])
+    lines += mirror_lines(ctx.get("mirror", []))
     unscanned = record.get("notScanned", [])
     if unscanned:
         lines += ["", "### Not scanned", ""]
@@ -445,7 +482,8 @@ def evaluate(fetch, record, scan_data, scan_error, kev, resolved, resolved_error
             set_condition(kind, "unknown")
         return finish(conditions, problems, now, fetch.get("urgent"))
 
-    ctx = {"record": record, "fetch": fetch}
+    ctx = {"record": record, "fetch": fetch,
+           "mirror": [(i["reference"], i["note"]) for i in (resolved or {}).get("images", []) if i.get("note")]}
 
     # ---- scan: the gate's decision with no baseline
     groups = None
@@ -509,6 +547,7 @@ def evaluate(fetch, record, scan_data, scan_error, kev, resolved, resolved_error
             if unresolved:
                 body += ["", f"{len(unresolved)} more digest(s) could not be resolved today. See the issue "
                          f"\"{KINDS['incomplete'][0]}\"."]
+            body += mirror_lines(ctx["mirror"])
             body += ["", "An image written with its digest (`digestSource: pinned`) cannot change by tag. The record "
                      "holds the digest the registry served for it.", "",
                      "Steps:", "",

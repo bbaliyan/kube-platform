@@ -826,18 +826,65 @@ class Resolve(unittest.TestCase):
         self.assertEqual(states(r)["drift"], "unknown")
         self.assertEqual(states(r)["incomplete"], "active")
 
-    def test_a_mirror_never_answers_for_a_failed_primary_lookup(self):
+    ECR = "ecr-public.aws.com/docker/library/redis:8.6.4-alpine"
+
+    def test_a_primary_error_and_a_mirror_with_the_same_digest_is_resolved(self):
         record = copy.deepcopy(self.record)
-        record["images"].append(dict(record["images"][0], reference="docker.io/library/redis:8", digest=D5))
-        with open(self.digests, "a") as f:  # only the mirror knows the image
-            f.write(f"mirror.gcr.io/library/redis:8 {D5}\ndocker.io/library/redis:8x {D5}\n")
+        record["images"].append(dict(record["images"][0], reference=self.ECR, digest=D5))
+        with open(self.digests, "a") as f:
+            f.write(f"mirror.gcr.io/library/redis:8.6.4-alpine {D5}\n")
         resolved = self.resolve(record)
-        redis = next(i for i in resolved["images"] if i["reference"] == "docker.io/library/redis:8")
+        redis = next(i for i in resolved["images"] if i["reference"] == self.ECR)
+        self.assertEqual(redis["digest"], D5)
+        self.assertIsNone(redis["error"])
+        self.assertIn("confirmed through mirror.gcr.io", redis["note"])
+        r = evaluate(record, resolved=resolved)
+        self.assertEqual(states(r)["drift"], "clear")
+        self.assertEqual(states(r)["incomplete"], "clear")
+        body = "\n".join(r["conditions"]["rolling"]["body"])
+        self.assertIn("Confirmed through a mirror", body)
+        self.assertIn("a tag move cannot be found", body)
+
+    def test_a_primary_error_and_a_mirror_with_another_digest_is_unresolved_not_drift(self):
+        record = copy.deepcopy(self.record)
+        record["images"].append(dict(record["images"][0], reference=self.ECR, digest=D5))
+        with open(self.digests, "a") as f:
+            f.write(f"mirror.gcr.io/library/redis:8.6.4-alpine {D4}\n")
+        resolved = self.resolve(record)
+        redis = next(i for i in resolved["images"] if i["reference"] == self.ECR)
+        self.assertIsNone(redis["digest"])
+        self.assertIn("another digest", redis["error"])
+        r = evaluate(record, resolved=resolved)
+        self.assertEqual(states(r)["drift"], "unknown")
+        self.assertEqual(states(r)["incomplete"], "active")
+
+    def test_a_primary_answer_that_differs_is_drift(self):
+        record = copy.deepcopy(self.record)
+        record["images"].append(dict(record["images"][0], reference=self.ECR, digest=D5))
+        with open(self.digests, "a") as f:
+            f.write(f"{self.ECR} {D4}\nmirror.gcr.io/library/redis:8.6.4-alpine {D5}\n")
+        r = evaluate(record, resolved=self.resolve(record))
+        self.assertEqual(states(r)["drift"], "active")
+
+    def test_a_primary_and_every_mirror_error_is_unresolved(self):
+        record = copy.deepcopy(self.record)
+        record["images"].append(dict(record["images"][0], reference=self.ECR, digest=D5))
+        resolved = self.resolve(record)
+        redis = next(i for i in resolved["images"] if i["reference"] == self.ECR)
         self.assertIsNone(redis["digest"])
         self.assertIsNotNone(redis["error"])
         r = evaluate(record, resolved=resolved)
         self.assertEqual(states(r)["drift"], "unknown")
         self.assertEqual(states(r)["incomplete"], "active")
+
+    def test_an_image_that_is_not_a_docker_official_image_has_no_mirror(self):
+        with open(self.digests, "a") as f:
+            f.write(f"mirror.gcr.io/example/app:1.0 {self.app}\n")
+        self.set_registry(skip=[f"{APP}:1.0"])
+        with open(self.digests, "a") as f:
+            f.write(f"mirror.gcr.io/example/app:1.0 {self.app}\n")
+        resolved = self.resolve(self.record)
+        self.assertIsNotNone(resolved["images"][0]["error"])
 
     def test_a_chart_outage_is_incomplete_not_clean(self):
         self.set_registry(skip=["registry.example.test/charts/oci:2.0.0"])
