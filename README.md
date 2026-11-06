@@ -237,8 +237,40 @@ A push to that repo changes the values. No Terraform run is needed.
   `workloads`. It sets `ignoreMissingValueFiles: true` on the chart source.
   Without a workloads repo there is no second source.
 
-The channel is generic: `platform-values/<component>.yaml`. Only
-`observability` uses it today.
+The channel is generic: `platform-values/<component>.yaml`. The
+`observability` and `argocd` components use it today.
+
+### Set Argo CD values from the workloads repo
+
+A cluster with a workloads repo can set Argo CD's own configuration in
+`platform-values/argocd.yaml`, for example single sign-on. The `argocd`
+Application reads the file as a Helm values file for the `argo-cd` chart, so
+the keys are the chart's, such as `configs.cm` and `configs.rbac`.
+
+```yaml
+configs:
+  cm:
+    url: https://argocd.example.com
+    oidc.config: |
+      name: Google
+      issuer: https://accounts.google.com
+      clientID: $argocd-google-oauth:clientID
+      clientSecret: $argocd-google-oauth:clientSecret
+  rbac:
+    scopes: "[email]"
+    policy.csv: |
+      g, admin@example.com, role:admin
+```
+
+- Keep client secrets in a Secret in the `argocd` namespace. Label it
+  `app.kubernetes.io/part-of=argocd`, and refer to it as `$<secret>:<key>`.
+- `argocdExtraConfigs` overrides the file, and both override the defaults of
+  this chart.
+- If the file is missing, the Application renders as before.
+- A cluster without a workloads repo is unchanged.
+- Argo CD reads the workloads repo to render its own Application. If the repo
+  credential breaks, the `argocd` Application cannot sync, but the running
+  Argo CD keeps working. Keep the local `admin` account enabled as a way in.
 
 ### Resize a volume
 
