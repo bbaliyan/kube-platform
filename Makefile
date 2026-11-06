@@ -77,6 +77,39 @@ secrets:
 commit-messages:
 	$(CHECKS)/commit-messages.sh "$(BASE_REF)"
 
+# The delta security gate. See ci/README.md "Security gate". It is not part of
+# test-commit: it scans images over the network. These two are checks:
+#   test-security-gate   fixture tests of ci/security_gate.py (part of test-scripts)
+#   check-trivyignore    expiry and reason of every ci/security-gate.trivyignore entry
+# security-gate needs out/promotion-record.json and out/kev.json (make kev-catalog).
+#   BASELINE_RECORD  the promotion record of the current stable; empty means
+#                    the first promotion, where only a KEV finding blocks
+.PHONY: test-security-gate check-trivyignore kev-catalog security-gate
+test-commit: check-trivyignore
+test-scripts: test-security-gate
+KEV_URL ?= https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+BASELINE_RECORD ?=
+
+test-security-gate:
+	tests/check-security-gate.py
+
+check-trivyignore:
+	python3 ci/security_gate.py check-ignore ci/security-gate.trivyignore
+
+kev-catalog:
+	mkdir -p out
+	curl -fsSL --retry 3 --retry-all-errors -o out/kev.json "$(KEV_URL)"
+
+security-gate:
+	python3 ci/security_gate.py scan --record out/promotion-record.json --out out/scan-results.json
+	status=0; \
+	python3 ci/security_gate.py decide --record out/promotion-record.json --scan out/scan-results.json \
+		--kev out/kev.json --ignore ci/security-gate.trivyignore \
+		$(if $(BASELINE_RECORD),--baseline "$(BASELINE_RECORD)",--no-baseline) \
+		--out out/promotion-record-scanned.json --summary out/security-summary.md || status=$$?; \
+	if [ -n "$${GITHUB_STEP_SUMMARY:-}" ] && [ -f out/security-summary.md ]; then cat out/security-summary.md >> "$$GITHUB_STEP_SUMMARY"; fi; \
+	exit $$status
+
 diff-comment: render
 	ci/render-base.sh "$(BASE_REF)"
 	python3 ci/diff_comment.py out/base out/head out/comment.md

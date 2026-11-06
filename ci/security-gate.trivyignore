@@ -1,0 +1,5 @@
+# Findings that the security gate (ci/security_gate.py) accepts for a while.
+# One entry per line. The date and the reason are both required.
+# Format: CVE-YYYY-NNNN exp:YYYY-MM-DD reason:<one line>
+# An entry that has expired, or lacks a reason, fails `make check-trivyignore`
+# and blocks the gate.

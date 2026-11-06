@@ -1,0 +1,39 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "docker.io/library/redis:6.0.0",
+  "ArtifactType": "container_image",
+  "Results": [
+    {
+      "Target": "docker.io/library/redis:6.0.0 (debian 10.3)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2022-1664",
+          "PkgName": "dpkg",
+          "InstalledVersion": "1.19.7",
+          "FixedVersion": "1.19.8",
+          "Status": "fixed",
+          "Title": "Dpkg::Source::Archive in dpkg, the Debian package management system, b ...",
+          "Severity": "CRITICAL"
+        }
+      ]
+    },
+    {
+      "Target": "usr/local/bin/gosu",
+      "Class": "lang-pkgs",
+      "Type": "gobinary",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2022-23806",
+          "PkgName": "stdlib",
+          "InstalledVersion": "v1.13.10",
+          "FixedVersion": "1.16.14, 1.17.7",
+          "Status": "fixed",
+          "Title": "golang: crypto/elliptic: IsOnCurve returns true for invalid field elements",
+          "Severity": "CRITICAL"
+        }
+      ]
+    }
+  ]
+}

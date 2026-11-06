@@ -145,6 +145,7 @@ It holds:
   operator adds the OS suffix on the node.
 - **scanner**: name, version and database time. They stay `null`. The security
   gate fills them in.
+- **scan**: absent until the security gate has run. See "Security gate".
 
 To build it:
 
@@ -161,6 +162,69 @@ In CI, the `record` job does this after the `integration` job and uploads the
 `promotion-record` artifact. It is not a required check. `make test-commit`
 runs `tests/check-promotion-record.py`, which tests the builder with fixtures
 and stand-in `docker` and `helm` commands.
+
+## Security gate
+
+`ci/security_gate.py` scans the images of a promotion record with Trivy and
+decides if the record may be promoted. Trivy runs from the pinned kube-devenv
+image, as the kube-devenv scheduled scan does. The gate compares the scan with
+the record of the current `stable`, so it blocks only what a promotion adds.
+
+It blocks in two cases:
+
+- **New**: an image that is not in the `stable` record has a fixable HIGH or
+  CRITICAL finding that `stable` does not list for the same repository,
+  vulnerability and package.
+- **KEV**: any finding, of any severity, is on the CISA Known Exploited
+  Vulnerabilities list. This holds for old findings and for findings without a
+  fix.
+
+All other findings are published as known. An image whose digest is in the
+`stable` record never blocks for a new finding. A promotion that changes nothing
+is not blocked by a vulnerability found later. The daily rescan reports those.
+
+It fails closed. It blocks when:
+
+- the Trivy database is older than 48 hours, or Trivy cannot report its version
+- an image of the record has no scan result, or its scan failed
+- the KEV file is missing, is not a CISA catalog, or is older than 21 days
+- an ignore entry has expired or has no reason
+- the `stable` record has no `scan` summary (a first promotion uses an empty
+  `BASELINE_RECORD`)
+
+The gate writes the Trivy version and the database time into `scanner`, and
+adds a `scan` object to the record: the verdict, the reasons, the counts, and
+every HIGH or CRITICAL finding (or KEV finding) with the status `blocking`,
+`known` or `ignored`. The next gate reads these findings as its baseline.
+The summary also goes to the job summary.
+
+To run it:
+
+1. Build `out/promotion-record.json`. See "Promotion record".
+2. Run `make kev-catalog`. It downloads the CISA catalog to `out/kev.json`.
+3. Run `make security-gate BASELINE_RECORD=<the stable record>`. It needs
+   `trivy` and the network. It writes `out/promotion-record-scanned.json` and
+   `out/security-summary.md`, and it exits 1 when it blocks.
+
+To accept a finding for a while, add a line to `ci/security-gate.trivyignore`:
+
+    CVE-2026-0001 exp:2027-01-31 reason:no upstream fix, not reachable
+
+The date and the reason are both required. `make check-trivyignore` (part of
+`make test-commit`) fails on an expired entry or an entry without a reason. The
+gate applies the file itself, so an ignored finding stays visible in the record.
+
+`make test-security-gate` (part of `make test-scripts`) runs
+`tests/check-security-gate.py`. It tests the decisions with synthetic results,
+and the parsing with a trimmed real Trivy report and a stand-in `trivy`.
+
+In CI, the `gate` job runs after `record` on pushes to `main` and manual runs,
+not on PRs. It is not a required check. It has no baseline yet, so only a KEV
+finding blocks there. The promote workflow passes the `stable` record.
+The optional secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a read-only
+token) log in to Docker Hub for the pulls, so the shared runner address is not
+rate limited. The login is written for `index.docker.io` only, so no other
+registry receives it.
 
 ## Example clusters
 

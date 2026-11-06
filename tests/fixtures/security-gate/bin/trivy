@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Stand-in for trivy. `trivy version --format json` prints a version and a database
+# time from $STUB_DB_UPDATED_AT (nothing for "none"). `trivy image ... --output FILE TARGET`
+# copies the report fixture to FILE, and fails when TARGET contains "broken".
+if [ "$1 $2 $3" = "version --format json" ]; then
+  [ "$STUB_DB_UPDATED_AT" != none ] || { echo '{"Version":"0.76.1"}'; exit 0; }
+  printf '{"Version":"0.76.1","VulnerabilityDB":{"Version":2,"UpdatedAt":"%s"}}\n' "$STUB_DB_UPDATED_AT"
+  exit 0
+fi
+[ "$1" = image ] || exit 2
+while [ $# -gt 1 ]; do
+  [ "$1" != --output ] || output="$2"
+  shift
+done
+case "$1" in
+  *broken*) echo "FATAL unable to find the specified image" >&2; exit 1 ;;
+esac
+cp "$STUB_REPORT" "$output"
