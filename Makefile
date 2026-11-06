@@ -199,3 +199,40 @@ test-scripts: test-default-revision
 
 test-default-revision:
 	tests/check-default-revision.py
+
+# The daily watch of stable (.github/workflows/stable-watch.yaml). See
+# ci/README.md "Stable watch". The two targets need the network and are not part
+# of test-commit. Both read the verified record at WATCH_RECORD.
+#   stable-watch-resolve  ask the registries for every image and chart digest
+#                         (needs docker buildx and helm); writes out/resolved.json
+#   stable-watch-scan     rescan the images by their registry digests; writes
+#                         out/scan-results.json. Run make kev-catalog first.
+#   stable-watch-report   decide from the downloaded results (out/stable, out/scan,
+#                         out/resolved, out/lag.json); writes out/state.json and
+#                         out/summary.md. It reads no network and writes no issue.
+#   test-stable-watch     fixture tests of ci/stable_watch.py and of the workflow
+WATCH_RECORD ?= out/stable/promotion-record.json
+
+.PHONY: test-stable-watch stable-watch-resolve stable-watch-scan stable-watch-report
+test-scripts: test-stable-watch
+
+test-stable-watch:
+	tests/check-stable-watch.py
+
+stable-watch-resolve:
+	python3 ci/stable_watch.py resolve --record "$(WATCH_RECORD)" --out out/resolved.json
+
+stable-watch-scan:
+	python3 ci/security_gate.py scan --record "$(WATCH_RECORD)" --out out/scan-results.json
+
+stable-watch-report:
+	python3 ci/stable_watch.py report --fetch out/stable/fetch.json --record "$(WATCH_RECORD)" \
+		--scan out/scan/scan-results.json --kev out/scan/kev.json --resolved out/resolved/resolved.json \
+		--lag out/lag.json --ignore ci/security-gate.trivyignore --out out/state.json --summary out/summary.md
+
+# stable-watch-watchdog fails when the newest Stable watch run is older than 2
+# days. tiers.yaml runs it on every push to main. It needs GH_TOKEN and
+# GITHUB_REPOSITORY.
+.PHONY: stable-watch-watchdog
+stable-watch-watchdog:
+	python3 ci/stable_watch.py watchdog --repo "$$GITHUB_REPOSITORY"

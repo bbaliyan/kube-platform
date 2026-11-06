@@ -1,0 +1,234 @@
+# The daily watch of `stable`. Setup only: the decisions live in
+# ci/stable_watch.py and the checks in the Makefile. See ci/README.md
+# "Stable watch".
+#
+# Trust, in short:
+#  - Every script comes from the checkout of main (the default branch). No
+#    candidate code and no code from a pull request runs here.
+#  - Each job has the least permission it needs. Only `report` can write
+#    issues. Only `keepalive` has `actions: write`, and it has nothing else.
+#  - The record of `stable` is verified against its attestation before any job
+#    reads it, with the same gh command as promote.yaml.
+#  - The read-only Docker Hub token is in the login steps of `resolve` and
+#    `scan` only. Those jobs cannot write to the repository.
+#  - Registry and scanner output reaches an issue only through the escaping in
+#    ci/stable_watch.py. No run block holds an expression with outside data.
+#  - Python steps run in the pinned kube-devenv image. `resolve` is the one
+#    exception: it needs docker buildx, which the image lacks, and its script
+#    uses only the standard library, so it installs no package.
+name: Stable watch
+
+on:
+  schedule:
+    - cron: '0 20 * * *' # every day at 20:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: stable-watch
+  cancel-in-progress: false
+
+permissions: {}
+
+# bash with pipefail, so a failing command in a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Gets the record of the latest published stable release and verifies its
+  # attestation. It never fails the job: the status is none, ok or failed, and
+  # the report job turns failed into an issue.
+  fetch:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    container: ghcr.io/bbaliyan/kube-devenv:0.13.1
+    outputs:
+      status: ${{ steps.fetch.outputs.status }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: git config --global --add safe.directory '*'
+      - id: fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ci/stable_watch.py fetch --repo "$GITHUB_REPOSITORY" --out-dir out/stable
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: stable-record
+          path: out/stable/
+
+  # Asks the registries for every image and chart digest of the record. It runs
+  # on the runner host because docker buildx is there. A registry error is
+  # written to the result; it is never taken for "no change".
+  resolve:
+    needs: fetch
+    if: ${{ needs.fetch.outputs.status == 'ok' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          # renovate: datasource=github-releases depName=helm/helm
+          version: v4.3.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: stable-record
+          path: out/stable/
+          digest-mismatch: error
+      # A read-only Docker Hub token, only to avoid rate limits on shared
+      # runner addresses. Without it the lookups run anonymously.
+      - name: Docker Hub login for pulls
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          [ -n "$DOCKERHUB_USERNAME$DOCKERHUB_TOKEN" ] || exit 0
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "set both DOCKERHUB_USERNAME and DOCKERHUB_TOKEN, or neither" >&2
+            exit 1
+          fi
+          mkdir -p "$HOME/.docker"
+          auth="$(printf '%s:%s' "$DOCKERHUB_USERNAME" "$DOCKERHUB_TOKEN" | base64 -w0)"
+          printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}' "$auth" > "$HOME/.docker/config.json"
+      - run: make stable-watch-resolve
+      - run: rm -rf "$HOME/.docker/config.json"
+        if: ${{ always() }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: watch-resolved
+          path: out/resolved.json
+          if-no-files-found: ignore
+
+  # Rescans the images of the record by their registry digests, with the scan
+  # of the security gate. A step that fails leaves no file, and the report job
+  # then says the scan is incomplete.
+  scan:
+    needs: fetch
+    if: ${{ needs.fetch.outputs.status == 'ok' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    container: ghcr.io/bbaliyan/kube-devenv:0.13.1
+    env:
+      DOCKER_CONFIG: /tmp/docker-config
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: git config --global --add safe.directory '*'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: stable-record
+          path: out/stable/
+          digest-mismatch: error
+      - name: Docker Hub login for pulls
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          [ -n "$DOCKERHUB_USERNAME$DOCKERHUB_TOKEN" ] || exit 0
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "set both DOCKERHUB_USERNAME and DOCKERHUB_TOKEN, or neither" >&2
+            exit 1
+          fi
+          mkdir -p "$DOCKER_CONFIG"
+          auth="$(printf '%s:%s' "$DOCKERHUB_USERNAME" "$DOCKERHUB_TOKEN" | base64 -w0)"
+          printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}' "$auth" > "$DOCKER_CONFIG/config.json"
+      # The KEV file is fetched on its own, so a failed download leaves the scan
+      # running. The report job then says the scan is incomplete.
+      - run: make kev-catalog
+        continue-on-error: true
+      - run: make stable-watch-scan
+      - run: rm -rf "$DOCKER_CONFIG"
+        if: ${{ always() }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: watch-scan
+          path: |
+            out/scan-results.json
+            out/kev.json
+          if-no-files-found: ignore
+
+  # Decides, then opens, updates and closes the issues. It has no registry
+  # token and runs no tool of the candidate. It is the only job with
+  # issues: write.
+  report:
+    needs: [fetch, resolve, scan]
+    if: ${{ !cancelled() && needs.fetch.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    container: ghcr.io/bbaliyan/kube-devenv:0.13.1
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: git config --global --add safe.directory '*'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: stable-record
+          path: out/stable/
+          digest-mismatch: error
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: watch-resolved
+          path: out/resolved/
+          digest-mismatch: error
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: watch-scan
+          path: out/scan/
+          digest-mismatch: error
+      # The lag needs no record, so a failed fetch does not hide a stale stable.
+      - run: python3 ci/stable_watch.py lag --repo "$GITHUB_REPOSITORY" --head "$GITHUB_SHA" --out out/lag.json
+      - run: |
+          make stable-watch-report
+          cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
+      # Exits 1 while a priority condition is active, so the run is red.
+      - run: python3 ci/stable_watch.py sync --state out/state.json --repo "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: watch-state
+          path: out/state.json
+          if-no-files-found: ignore
+
+  # GitHub disables a scheduled workflow of a public repository after 60 days
+  # without repository activity. Enabling a workflow that is already enabled
+  # counts as activity and restarts the 60 days. The call needs only
+  # actions: write, no secret and no commit. It runs apart from the
+  # other jobs, so a failure elsewhere never skips it. A failed call fails the job,
+  # so the run is red. The watchdog job of tiers.yaml checks that this workflow
+  # keeps running. See ci/README.md.
+  keepalive:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Enable this workflow again
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method PUT "repos/$GITHUB_REPOSITORY/actions/workflows/stable-watch.yaml/enable"
