@@ -141,3 +141,54 @@ manifest-risk: render
 	python3 ci/manifest_risk.py --stable out/base --candidate out/head \
 		--allowlist ci/registry-allowlist.yaml --out-dir out/manifest-risk
 	if [ -n "$${GITHUB_STEP_SUMMARY:-}" ]; then cat out/manifest-risk/manifest-risk.md >> "$$GITHUB_STEP_SUMMARY"; fi
+
+# The promote workflow (ci/README.md "Promote workflow") judges a candidate with
+# the scripts of a trusted checkout (main HEAD), never with the candidate's own.
+#   promote-overlay        run in the trusted checkout: replace ci/, tests/, the
+#                          Makefile and the lint and secret-scan settings of the
+#                          candidate checkout CANDIDATE (OVERLAY_PATHS) with the
+#                          trusted ones, so the candidate is data only
+#   promote-revert-check   run in the overlaid candidate checkout after
+#                          manifest-risk: compare the charts and images of the
+#                          candidate, main HEAD (MAIN_ROOT) and stable (STABLE_ROOT)
+#   test-promote           fixture tests of ci/promote.py and of the two workflows
+CANDIDATE ?= ../candidate
+MAIN_ROOT ?= ../trusted
+STABLE_ROOT ?= ../stable-src
+
+.PHONY: promote-overlay promote-revert-check test-promote
+test-scripts: test-promote
+
+# Everything the commit tier reads as a rule, not as data under test. A path the
+# trusted tree lacks is removed from the candidate. A symlink in the candidate
+# is removed, never followed. Each copy is compared with the trusted one.
+OVERLAY_PATHS = ci tests Makefile .githooks .gitleaks.toml .gitleaksignore .pipelinelintignore \
+	.shellcheckrc .yamllint .yamllint.yaml .yamllint.yml renovate.json \
+	.github/actionlint.yaml .github/actionlint.yml .github/zizmor.yml .github/zizmor.yaml
+
+promote-overlay:
+	test -d "$(CANDIDATE)"
+	for p in $(OVERLAY_PATHS); do \
+		parent="$$(dirname "$$p")"; \
+		if [ "$$parent" != . ] && [ -L "$(CANDIDATE)/$$parent" ]; then rm "$(CANDIDATE)/$$parent"; fi; \
+		rm -rf "$(CANDIDATE)/$$p"; \
+		if [ -e "$$p" ] || [ -L "$$p" ]; then \
+			mkdir -p "$(CANDIDATE)/$$parent"; \
+			cp -a "$$p" "$(CANDIDATE)/$$p"; \
+			diff -r --no-dereference "$$p" "$(CANDIDATE)/$$p" || exit 1; \
+		elif [ -e "$(CANDIDATE)/$$p" ] || [ -L "$(CANDIDATE)/$$p" ]; then \
+			echo "promote-overlay: $$p was not removed"; exit 1; \
+		fi; \
+	done
+
+promote-revert-check:
+	test -d out/head -a -d out/base
+	python3 ci/render.py "$(MAIN_ROOT)" out/main-head
+	python3 ci/promote.py deps --rendered out/head --repo-root . --out out/deps-candidate.json
+	python3 ci/promote.py deps --rendered out/main-head --repo-root "$(MAIN_ROOT)" --out out/deps-head.json
+	python3 ci/promote.py deps --rendered out/base --repo-root "$(STABLE_ROOT)" --out out/deps-stable.json
+	python3 ci/promote.py revert-check --candidate out/deps-candidate.json --head out/deps-head.json \
+		--stable out/deps-stable.json --out out/manifest-risk/revert.json
+
+test-promote:
+	tests/check-promote.py

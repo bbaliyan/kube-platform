@@ -1,0 +1,482 @@
+# The only way `stable` moves. Setup only: the decisions live in ci/promote.py
+# and the checks in the Makefile. See ci/README.md "Promote workflow".
+#
+# Trust, in short:
+#  - Every script that judges a candidate comes from the trusted checkout (the
+#    main commit that started this run). The candidate is checked out as data.
+#  - The jobs that touch candidate data have `contents: read` and no secret. The
+#    one exception is the read-only Docker Hub token in the scan step.
+#  - The `promote` job has the deploy key. It does not check out candidate code.
+#    It re-validates the gate results itself, then pushes over SSH.
+#  - The `promote` environment asks the owner to approve every run that reaches
+#    the push. A dry run never reaches it.
+#  - The jobs after select run in the pinned kube-devenv image, which has the
+#    Python packages, git, gh and ssh. No job installs a package from the net
+#    except with a hash-pinned file.
+name: Promote
+
+on:
+  schedule:
+    - cron: '0 22 * * 0' # Sunday 22:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Run every gate and the final checks, but push, tag and release nothing.
+        type: boolean
+        default: false
+      fast_path_reason:
+        description: Fast path. A written reason skips the 7-day soak and promotes main HEAD. Leave empty for a normal run.
+        type: string
+        default: ''
+      first_promotion:
+        description: Set only for the first promotion, when no stable release exists yet.
+        type: boolean
+        default: false
+      prove_key:
+        description: Run only the deploy key proof. It creates and deletes a throwaway tag and moves nothing else.
+        type: boolean
+        default: false
+
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
+permissions: {}
+
+# bash with pipefail, so a failing command in a pipe fails the step.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  select:
+    if: ${{ github.ref == 'refs/heads/main' && !inputs.prove_key }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      nothing_to_do: ${{ steps.select.outputs.nothing_to_do }}
+      candidate_1: ${{ steps.select.outputs.candidate_1 }}
+      candidate_2: ${{ steps.select.outputs.candidate_2 }}
+      candidate_3: ${{ steps.select.outputs.candidate_3 }}
+      stable_sha: ${{ steps.select.outputs.stable_sha }}
+      first_promotion: ${{ steps.baseline.outputs.first_promotion }}
+      select_digest: ${{ steps.digest.outputs.select_digest }}
+      baseline_digest: ${{ steps.digest.outputs.baseline_digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FAST_PATH_REASON: ${{ inputs.fast_path_reason }}
+        run: |
+          python3 ci/promote.py select --head "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" \
+            --fast-path-reason "$FAST_PATH_REASON" --out out/select.json | tee -a "$GITHUB_STEP_SUMMARY"
+      # The baseline is the record of the current stable, verified against the
+      # attestation. A missing release stops the run unless first_promotion is
+      # set, and first_promotion is refused when any stable tag exists or stable
+      # has moved from its initial commit.
+      - id: baseline
+        if: ${{ steps.select.outputs.nothing_to_do == 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FIRST_PROMOTION: ${{ inputs.first_promotion }}
+          STABLE_SHA: ${{ steps.select.outputs.stable_sha }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,isDraft,isPrerelease > out/releases.json
+          git ls-remote --tags origin 'refs/tags/stable-*' > out/tags.txt
+          args=()
+          [ "$FIRST_PROMOTION" = true ] && args+=(--first-promotion --stable-sha "$STABLE_SHA" --tags out/tags.txt)
+          python3 ci/promote.py baseline --releases out/releases.json "${args[@]}"
+          tag="$(sed -n 's/^baseline_tag=//p' "$GITHUB_OUTPUT" | tail -n 1)"
+          if [ -n "$tag" ]; then
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern promotion-record.json --dir out/baseline
+            gh attestation verify out/baseline/promotion-record.json --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/promote.yaml" \
+              --source-ref refs/heads/main \
+              --cert-oidc-issuer https://token.actions.githubusercontent.com
+            python3 ci/promote.py check-baseline --record out/baseline/promotion-record.json --stable-sha "$STABLE_SHA"
+          fi
+      - id: digest
+        run: |
+          echo "select_digest=$(python3 ci/promote.py digest --path out/select.json)" >> "$GITHUB_OUTPUT"
+          if [ -f out/baseline/promotion-record.json ]; then
+            echo "baseline_digest=$(python3 ci/promote.py digest --path out/baseline/promotion-record.json)" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: select
+          path: out/select.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: baseline-record
+          path: out/baseline/promotion-record.json
+          if-no-files-found: ignore
+
+  # A candidate that fails a gate hands over to the next older one. At most
+  # three are tried. The weekly run only ever gets candidates that are at least
+  # 7 days old from ci/promote.py select.
+  candidate-1:
+    needs: select
+    if: ${{ needs.select.outputs.nothing_to_do == 'false' && needs.select.outputs.candidate_1 != '' }}
+    uses: ./.github/workflows/promote-candidate.yaml
+    permissions:
+      contents: read
+    with:
+      candidate: ${{ needs.select.outputs.candidate_1 }}
+      stable_sha: ${{ needs.select.outputs.stable_sha }}
+      slot: '1'
+      first_promotion: ${{ needs.select.outputs.first_promotion }}
+      baseline_digest: ${{ needs.select.outputs.baseline_digest }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  candidate-2:
+    needs: [select, candidate-1]
+    if: ${{ !cancelled() && needs.select.result == 'success' && needs.select.outputs.candidate_2 != '' && needs.candidate-1.outputs.result != 'pass' }}
+    uses: ./.github/workflows/promote-candidate.yaml
+    permissions:
+      contents: read
+    with:
+      candidate: ${{ needs.select.outputs.candidate_2 }}
+      stable_sha: ${{ needs.select.outputs.stable_sha }}
+      slot: '2'
+      first_promotion: ${{ needs.select.outputs.first_promotion }}
+      baseline_digest: ${{ needs.select.outputs.baseline_digest }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  candidate-3:
+    needs: [select, candidate-1, candidate-2]
+    if: ${{ !cancelled() && needs.select.result == 'success' && needs.select.outputs.candidate_3 != '' && needs.candidate-1.outputs.result != 'pass' && needs.candidate-2.outputs.result != 'pass' }}
+    uses: ./.github/workflows/promote-candidate.yaml
+    permissions:
+      contents: read
+    with:
+      candidate: ${{ needs.select.outputs.candidate_3 }}
+      stable_sha: ${{ needs.select.outputs.stable_sha }}
+      slot: '3'
+      first_promotion: ${{ needs.select.outputs.first_promotion }}
+      baseline_digest: ${{ needs.select.outputs.baseline_digest }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  # Picks the first candidate that passed, reports every skip, and writes the
+  # review text the owner reads before approving. No secret, no candidate code.
+  choose:
+    needs: [select, candidate-1, candidate-2, candidate-3]
+    if: ${{ !cancelled() && needs.select.result == 'success' && needs.select.outputs.nothing_to_do == 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    container: ghcr.io/bbaliyan/kube-devenv:0.13.1
+    outputs:
+      slot: ${{ steps.pick.outputs.slot }}
+      sha: ${{ steps.pick.outputs.sha }}
+      needs_approval: ${{ steps.pick.outputs.needs_approval }}
+      scanned_digest: ${{ steps.pick.outputs.scanned_digest }}
+      risk_digest: ${{ steps.pick.outputs.risk_digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: git config --global --add safe.directory '*'
+      - id: pick
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python3 ci/promote.py choose | tee -a "$GITHUB_STEP_SUMMARY"
+          if ! grep -q '^sha=.\+' "$GITHUB_OUTPUT"; then
+            echo "No candidate passed every gate. Stable stays where it is." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: select
+          path: inputs/select
+          digest-mismatch: error
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: scanned-record-${{ steps.pick.outputs.slot }}
+          path: inputs/scanned
+          digest-mismatch: error
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: risk-${{ steps.pick.outputs.slot }}
+          path: inputs/risk
+          digest-mismatch: error
+      # The same checks the promote job repeats with the key in hand.
+      - env:
+          CANDIDATE: ${{ steps.pick.outputs.sha }}
+          FIRST_PROMOTION: ${{ needs.select.outputs.first_promotion }}
+          SELECT_DIGEST: ${{ needs.select.outputs.select_digest }}
+          SCANNED_DIGEST: ${{ steps.pick.outputs.scanned_digest }}
+          RISK_DIGEST: ${{ steps.pick.outputs.risk_digest }}
+        run: ci/promote-prepare.sh inputs
+      - name: Write the review text
+        env:
+          CANDIDATE: ${{ steps.pick.outputs.sha }}
+        run: |
+          python3 ci/promote.py review --select inputs/select/select.json \
+            --record inputs/scanned/promotion-record-scanned.json --risk inputs/risk/manifest-risk.json \
+            --risk-md inputs/risk/manifest-risk.md --revert inputs/risk/revert.json \
+            --candidate "$CANDIDATE" >> "$GITHUB_STEP_SUMMARY"
+
+  # A dry run stops here. It has run every gate and the same re-validation as
+  # the promote job. It has no environment, no key and no write permission.
+  dry-run:
+    needs: [select, choose]
+    if: ${{ !cancelled() && needs.choose.result == 'success' && inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    container: ghcr.io/bbaliyan/kube-devenv:0.13.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: git config --global --add safe.directory '*'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: select
+          path: inputs/select
+          digest-mismatch: error
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: scanned-record-${{ needs.choose.outputs.slot }}
+          path: inputs/scanned
+          digest-mismatch: error
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: risk-${{ needs.choose.outputs.slot }}
+          path: inputs/risk
+          digest-mismatch: error
+      - id: prepare
+        env:
+          CANDIDATE: ${{ needs.choose.outputs.sha }}
+          FIRST_PROMOTION: ${{ needs.select.outputs.first_promotion }}
+          SELECT_DIGEST: ${{ needs.select.outputs.select_digest }}
+          SCANNED_DIGEST: ${{ needs.choose.outputs.scanned_digest }}
+          RISK_DIGEST: ${{ needs.choose.outputs.risk_digest }}
+        run: ci/promote-prepare.sh inputs
+      - name: Say what a real run would do
+        env:
+          CANDIDATE: ${{ needs.choose.outputs.sha }}
+          TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          {
+            echo "## Dry run: nothing was pushed"
+            echo "A real run would push \`$CANDIDATE\` to \`stable\`, tag it \`$TAG\`, attest the record and publish the release."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-files-dry-run
+          path: release/
+
+  # The only job with the deploy key. The environment `promote` asks the owner
+  # to approve before this job starts, whether or not the diff has additions.
+  # It checks out main, never the candidate: the candidate's commits are only
+  # fetched, as history, so no candidate file is on disk.
+  promote:
+    needs: [select, choose]
+    if: ${{ !cancelled() && needs.choose.result == 'success' && !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: promote
+    container: ghcr.io/bbaliyan/kube-devenv:0.13.1
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CANDIDATE: ${{ needs.choose.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: git config --global --add safe.directory '*'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: select
+          path: inputs/select
+          digest-mismatch: error
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: scanned-record-${{ needs.choose.outputs.slot }}
+          path: inputs/scanned
+          digest-mismatch: error
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: risk-${{ needs.choose.outputs.slot }}
+          path: inputs/risk
+          digest-mismatch: error
+      - id: prepare
+        env:
+          FIRST_PROMOTION: ${{ needs.select.outputs.first_promotion }}
+          SELECT_DIGEST: ${{ needs.select.outputs.select_digest }}
+          SCANNED_DIGEST: ${{ needs.choose.outputs.scanned_digest }}
+          RISK_DIGEST: ${{ needs.choose.outputs.risk_digest }}
+        run: ci/promote-prepare.sh inputs
+      # Release immutability is a repository setting. Without it a published
+      # release can change. Read the setting; if the token cannot read it,
+      # require the owner's repository variable, which the owner sets after
+      # turning the setting on. This step runs before the key is loaded.
+      - id: immutable
+        name: Require release immutability
+        env:
+          CONFIRMED: ${{ vars.IMMUTABLE_RELEASES_CONFIRMED }}
+        run: |
+          if state="$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled 2>/dev/null)"; then
+            [ "$state" = true ] || { echo "Release immutability is off. Turn it on in the repository settings." >&2; exit 1; }
+          elif [ "$CONFIRMED" != true ]; then
+            echo "The token cannot read the immutable releases setting. Turn the setting on, then set the repository variable IMMUTABLE_RELEASES_CONFIRMED to true." >&2
+            exit 1
+          fi
+      - id: load
+        name: Load the deploy key
+        env:
+          PROMOTE_DEPLOY_KEY: ${{ secrets.PROMOTE_DEPLOY_KEY }}
+        run: ci/promote-key.sh load
+      # Order: tag, attestation, draft release, push to stable, publish. A
+      # failure before the push undoes the tag and the draft. The tag is
+      # created by the key, because the tag ruleset blocks everyone else.
+      - id: tag
+        env:
+          TAG: ${{ steps.prepare.outputs.tag }}
+        run: git push "git@github.com:$GITHUB_REPOSITORY.git" "$CANDIDATE:refs/tags/$TAG"
+      - id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: release/promotion-record.json
+      - id: draft
+        env:
+          TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" \
+            --notes-file release/notes.md release/promotion-record.json release/manifest-risk.json release/manifest-risk.md
+      - id: push
+        run: git push "git@github.com:$GITHUB_REPOSITORY.git" "$CANDIDATE:refs/heads/stable"
+      - id: publish
+        env:
+          TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          [ "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .immutable)" = true ] \
+            || { echo "The release is not immutable. Turn on release immutability in the repository settings." >&2; exit 1; }
+          {
+            echo "## Promoted"
+            echo "\`stable\` is now \`$CANDIDATE\`. Release \`$TAG\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+      # The undo steps run on a failure or a cancel. Each undoes only what its
+      # own step created, and only while stable has not moved to the candidate.
+      - id: undo_release
+        name: Undo the draft release
+        if: ${{ (failure() || cancelled()) && steps.draft.outcome == 'success' && steps.push.outcome != 'success' }}
+        env:
+          TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          if [ "$(git ls-remote origin refs/heads/stable | cut -f1)" = "$CANDIDATE" ]; then
+            echo "stable already moved to the candidate; the draft stays"; exit 0
+          fi
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
+      - id: undo_tag
+        name: Undo the tag
+        if: ${{ (failure() || cancelled()) && steps.tag.outcome == 'success' && steps.load.outcome == 'success' && steps.push.outcome != 'success' }}
+        env:
+          TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          if [ "$(git ls-remote origin refs/heads/stable | cut -f1)" = "$CANDIDATE" ]; then
+            echo "stable already moved to the candidate; the tag stays"; exit 0
+          fi
+          git push "git@github.com:$GITHUB_REPOSITORY.git" --delete "refs/tags/$TAG"
+      - name: Say what is left to do
+        if: ${{ (failure() || cancelled()) && steps.draft.outcome == 'success' && steps.publish.outcome != 'success' }}
+        env:
+          TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          if [ "$(git ls-remote origin refs/heads/stable | cut -f1)" = "$CANDIDATE" ]; then
+            echo "stable moved to $CANDIDATE, but the release $TAG is not published. Publish the draft by hand." \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Remove the deploy key
+        if: ${{ always() }}
+        run: ci/promote-key.sh unload
+
+  # The proof that was moved here from the #179 ruleset ticket. A tag matching
+  # the stable-* tag ruleset is created and deleted with the key, and the same is
+  # tried without it. stable itself is never touched. See ci/README.md.
+  key-proof:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.prove_key }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: promote
+    container: ghcr.io/bbaliyan/kube-devenv:0.13.1
+    permissions:
+      contents: read
+    env:
+      PROBE: stable-probe-key-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: git config --global --add safe.directory '*'
+      - id: load
+        name: Load the deploy key
+        env:
+          PROMOTE_DEPLOY_KEY: ${{ secrets.PROMOTE_DEPLOY_KEY }}
+        run: ci/promote-key.sh load
+      - id: create
+        name: Create a throwaway tag with the key
+        run: |
+          git push "git@github.com:$GITHUB_REPOSITORY.git" "HEAD:refs/tags/$PROBE"
+          echo "The deploy key can create a protected tag: PASS" | tee -a "$GITHUB_STEP_SUMMARY"
+      # Runs also when the create step fails or the run is cancelled, so no
+      # probe tag stays behind.
+      - name: Delete the throwaway tag
+        if: ${{ always() && steps.load.outcome == 'success' }}
+        run: |
+          remote="git@github.com:$GITHUB_REPOSITORY.git"
+          if [ -n "$(git ls-remote "$remote" "refs/tags/$PROBE")" ]; then
+            git push "$remote" --delete "refs/tags/$PROBE"
+          fi
+          [ -z "$(git ls-remote "$remote" "refs/tags/$PROBE")" ]
+          echo "The throwaway tag is gone." | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Remove the deploy key
+        if: ${{ always() }}
+        run: ci/promote-key.sh unload
+
+  key-proof-outside:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.prove_key }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Try the same push with the workflow token
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROBE: stable-probe-token-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          remote="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          if git push "$remote" "HEAD:refs/tags/$PROBE"; then
+            git push "$remote" --delete "refs/tags/$PROBE" || true
+            echo "The workflow token could create a protected tag. The ruleset does not hold." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "The workflow token cannot create a protected tag: PASS" | tee -a "$GITHUB_STEP_SUMMARY"
