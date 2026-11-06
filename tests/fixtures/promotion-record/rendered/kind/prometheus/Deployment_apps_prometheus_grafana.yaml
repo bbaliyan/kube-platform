@@ -17,3 +17,5 @@ spec:
                   name: prometheus-grafana
         - name: sidecar
           image: busybox:1.37
+        - name: cache
+          image: ecr-public.aws.com/docker/library/redis:8.6.4-alpine

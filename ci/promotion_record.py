@@ -34,8 +34,16 @@ Chart.yaml files of this repo. The chart digest is the digest of the chart
 archive (the same value as the index entry of a Helm repository) or the OCI
 manifest digest.
 
-notScanned lists what a container fetches at start and no image scan sees. Today
-that is the Grafana plugins.
+notScanned lists what a container fetches at start and no image scan sees (the
+Grafana plugins), and the images that cannot be resolved because the operator
+builds the tag on the node (the GPU driver: the ClusterPolicy names 595.91.07,
+the registry only has 595.91.07-ubuntu24.04 and the like). A component of the
+ClusterPolicy with enabled: false is skipped.
+
+Each image has a digestSource. runtime: the digest of a running container, as
+the node pulled it. registry: the digest the registry returned for the tag
+when the record was built, or the digest written in the manifest. A registry
+digest says what the tag points at now, not that any node pulled it.
 
 The scanner fields stay null. The security gate fills them in.
 
@@ -64,6 +72,11 @@ from render import load_docs  # noqa: E402
 SCHEMA = Path(__file__).resolve().parent / "promotion-record.schema.json"
 SCHEMA_VERSION = 1
 SKIP_KINDS = {"CustomResourceDefinition", "Application", "ConfigMap", "Secret"}
+KNOWN_REGISTRIES = {"docker.io", "ghcr.io", "quay.io", "gcr.io", "registry.k8s.io", "k8s.gcr.io", "nvcr.io",
+                    "public.ecr.aws", "mcr.microsoft.com", "registry.gitlab.com", "lscr.io", "cgr.dev",
+                    "localhost"}
+KNOWN_REGISTRY_SUFFIXES = (".gcr.io", ".pkg.dev", ".amazonaws.com")
+VERSION_TAG = re.compile(r"^v?\d[\w.-]*$")
 PLUGIN_ENV = re.compile(r"^GF_(INSTALL_PLUGINS|PLUGINS_PREINSTALL(_SYNC|_ASYNC)?)$")
 DIGEST = r"sha256:[a-f0-9]{64}"
 REF_RE = re.compile(
@@ -125,15 +138,24 @@ def image_from_text(text):
     if text.startswith("--") and "=" in text:
         text = text.split("=", 1)[1]
     parsed = parse_ref(text) if has_registry(text) else None
-    if parsed and (parsed[1] != "latest" or ":latest" in text or parsed[2]):
+    if not parsed or not (":" in text.rsplit("/", 1)[-1] or parsed[2]):
+        return None
+    host = text.split("/", 1)[0].split(":")[0]
+    known = host in KNOWN_REGISTRIES or host.endswith(KNOWN_REGISTRY_SUFFIXES)
+    # app.kubernetes.io/name:foo has the shape of an image. Unless the host is
+    # a known registry, only a version tag or a digest makes it one.
+    if known or parsed[2] or VERSION_TAG.match(parsed[1] or ""):
         return text
     return None
 
 
-def images_in(node):
-    """Every image reference below node."""
+def images_in(node, operator_policy=False):
+    """Every image reference below node. In a ClusterPolicy, a component with
+    enabled: false is skipped with everything below it."""
     found = set()
     if isinstance(node, dict):
+        if operator_policy and node.get("enabled") is False:
+            return found
         image = node.get("image")
         if isinstance(image, str) and image:
             repository, version = node.get("repository"), node.get("version")
@@ -148,10 +170,10 @@ def images_in(node):
             if (r := image_from_text(node["value"])):
                 found.add(r)
         for v in node.values():
-            found |= images_in(v)
+            found |= images_in(v, operator_policy)
     elif isinstance(node, list):
         for v in node:
-            found |= images_in(v)
+            found |= images_in(v, operator_policy)
     return found
 
 
@@ -183,17 +205,20 @@ def plugins_in(objs):
 
 
 def read_rendered(rendered):
-    """(rendered image references, Applications, plugin names)."""
-    images, apps, plugins = set(), [], set()
+    """(rendered image references, the ones composed by an operator, Applications,
+    plugin names)."""
+    images, composed, apps, plugins = set(), set(), [], set()
     for app_dir in sorted(p for p in Path(rendered).glob("*/*") if p.is_dir()):
         objs = [d for f in sorted(app_dir.glob("*.yaml"))
                 for d in load_docs(f.read_text(encoding="utf-8"))]
         apps += [o for o in objs if o.get("kind") == "Application"]
         for o in objs:
-            if o.get("kind") not in SKIP_KINDS:
+            if o.get("kind") == "ClusterPolicy":
+                composed |= images_in(o, operator_policy=True)
+            elif o.get("kind") not in SKIP_KINDS:
                 images |= images_in(with_plan_tags(o))
         plugins |= plugins_in(objs)
-    return images, apps, plugins
+    return images, composed - images, apps, plugins
 
 
 def chart_requests(apps, repo_root):
@@ -205,25 +230,26 @@ def chart_requests(apps, repo_root):
         for s in spec.get("sources") or [spec.get("source", {})]:
             if "chart" in s:
                 repo = s["repoURL"] if "://" in s["repoURL"] else f"oci://{s['repoURL']}"
-                charts.add((repo, s["chart"], str(s["targetRevision"])))
+                charts.add((repo.rstrip("/"), s["chart"], str(s["targetRevision"])))
     files = [f for top in ("bootstrap", "platform") for f in Path(repo_root, top).glob("**/Chart.yaml")]
     for f in sorted(files):
         if "charts" in f.relative_to(repo_root).parts:
             continue
         for dep in (yaml.safe_load(f.read_text(encoding="utf-8")) or {}).get("dependencies") or []:
             if dep.get("repository"):
-                charts.add((dep["repository"], dep["name"], str(dep["version"])))
+                charts.add((dep["repository"].rstrip("/"), dep["name"], str(dep["version"])))
     return charts
 
 
-def retry(fn, what, tries=3):
+def retry(fn, what, tries=5):
     for attempt in range(tries):
         try:
             return fn()
         except RuntimeError as e:
             if attempt == tries - 1:
                 raise RuntimeError(f"{what}: {e}") from e
-            time.sleep(float(os.environ.get("PROMOTION_RECORD_PAUSE", 2)) * (attempt + 1))
+            # 2, 4, 8, 16 seconds: a registry that rate limits needs time, not a quick retry.
+            time.sleep(float(os.environ.get("PROMOTION_RECORD_PAUSE", 2)) * 2 ** attempt)
 
 
 def run(cmd):
@@ -233,11 +259,31 @@ def run(cmd):
     return res.stdout.strip()
 
 
+def sources_of(ref):
+    """Where to ask for the digest. A Docker Official Image has the same
+    digest on Docker Hub, the AWS public mirror and mirror.gcr.io (ci/e2e/preload-images.sh
+    relies on the same fact), and Docker Hub and AWS refuse anonymous requests
+    from a shared address."""
+    for prefix in ("ecr-public.aws.com/docker/library/", "docker.io/library/"):
+        if ref.startswith(prefix):
+            rest = ref[len(prefix):]
+            alternatives = [f"docker.io/library/{rest}", f"mirror.gcr.io/library/{rest}"]
+            return [ref] + [a for a in alternatives if a != ref]
+    return [ref]
+
+
 def registry_digest(ref):
-    out = run(["docker", "buildx", "imagetools", "inspect", ref, "--format", "{{.Manifest.Digest}}"])
-    if not re.fullmatch(DIGEST, out):
-        raise RuntimeError(f"unexpected digest output {out!r}")
-    return out
+    error = None
+    for source in sources_of(ref):
+        try:
+            out = run(["docker", "buildx", "imagetools", "inspect", source, "--format", "{{.Manifest.Digest}}"])
+        except RuntimeError as e:
+            error = e
+            continue
+        if not re.fullmatch(DIGEST, out):
+            raise RuntimeError(f"unexpected digest output {out!r}")
+        return out
+    raise error
 
 
 def chart_digest(repo, name, version):
@@ -272,25 +318,54 @@ def runtime_images(path):
 def validate_record(record):
     import jsonschema
     schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
-    validator = jsonschema.Draft202012Validator(schema)
+    validator = jsonschema.Draft202012Validator(schema, format_checker=jsonschema.FormatChecker())
     return [f"{'/'.join(map(str, e.absolute_path)) or '<root>'}: {e.message}"
             for e in sorted(validator.iter_errors(record), key=lambda e: list(map(str, e.path)))]
 
 
+def repository_of(ref):
+    name = ref.split("@")[0]
+    head, _, last = name.rpartition("/")
+    return f"{head}/{last.split(':')[0]}" if head else last.split(":")[0]
+
+
+def merge_entries(entries):
+    """One entry per repository and digest. Where several references share a
+    digest, the reference is name@digest."""
+    groups = {}
+    for ref, e in entries.items():
+        groups.setdefault((repository_of(ref), e["digest"]), []).append((ref, e))
+    merged = []
+    for (name, digest), members in sorted(groups.items()):
+        sources = sorted({x for _, e in members for x in e["sources"]})
+        source = "runtime" if any(e["digestSource"] == "runtime" for _, e in members) else "registry"
+        ref = members[0][0] if len(members) == 1 else f"{name}@{digest}"
+        merged.append({"reference": ref, "digest": digest, "digestSource": source, "sources": sources})
+    return merged
+
+
 def build(args):
-    images, apps, plugins = read_rendered(args.rendered)
-    entries = {}
-    for ref in images:
+    images, composed, apps, plugins = read_rendered(args.rendered)
+    runtime = runtime_images(args.runtime)
+    entries, soft = {}, set()
+    for ref in images | composed:
         parsed = parse_ref(ref)
-        entries.setdefault(reference(parsed), {"digest": parsed[2], "sources": set()})["sources"].add("rendered")
-    for ref, digest in runtime_images(args.runtime).items():
-        entry = entries.setdefault(ref, {"digest": None, "sources": set()})
+        # A tag written beside a digest adds nothing the digest does not say.
+        key = reference((parsed[0], None if parsed[2] else parsed[1], parsed[2]))
+        entry = entries.setdefault(key, {"digest": parsed[2], "digestSource": "registry", "sources": set()})
+        entry["sources"].add("rendered")
+        if ref in composed:
+            soft.add(key)
+    for ref, digest in runtime.items():
+        entry = entries.setdefault(ref, {"digest": None, "digestSource": "registry", "sources": set()})
         entry["sources"].add("runtime")
-        entry["digest"] = digest or entry["digest"]
+        soft.discard(ref)
+        if digest:
+            entry["digest"], entry["digestSource"] = digest, "runtime"
 
     charts = sorted(chart_requests(apps, args.repo_root))
-    errors, chart_digests = [], {}
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    errors, unresolved, chart_digests = [], set(), {}
+    with ThreadPoolExecutor(max_workers=4) as pool:
         pending_images = {ref: pool.submit(retry, lambda r=ref: registry_digest(r), ref)
                           for ref, e in entries.items() if not e["digest"]}
         pending_charts = {c: pool.submit(retry, lambda c=c: chart_digest(*c), f"chart {c[1]} {c[2]}")
@@ -299,7 +374,11 @@ def build(args):
             try:
                 entries[ref]["digest"] = fut.result()
             except RuntimeError as e:
-                errors.append(str(e))
+                # An operator builds some tags on the node (the GPU driver adds the OS).
+                if ref in soft:
+                    unresolved.add(ref)
+                else:
+                    errors.append(str(e))
         for c, fut in pending_charts.items():
             try:
                 chart_digests[c] = fut.result()
@@ -307,20 +386,24 @@ def build(args):
                 errors.append(str(e))
     if errors:
         sys.exit("cannot resolve digests:\n  " + "\n  ".join(sorted(errors)))
+    for ref in unresolved:
+        del entries[ref]
 
+    not_scanned = [{"type": "grafana-plugin", "name": p,
+                    "reason": "Grafana downloads the plugin when the pod starts"}
+                   for p in sorted(plugins)]
+    not_scanned += [{"type": "unresolved-image", "name": ref,
+                     "reason": "the registry has no such tag; the operator builds the tag on the node"}
+                    for ref in sorted(unresolved)]
     record = {
         "schemaVersion": SCHEMA_VERSION,
-        "images": [{"reference": r, "digest": e["digest"], "sources": sorted(e["sources"])}
-                   for r, e in sorted(entries.items())],
+        "commit": args.commit or run(["git", "rev-parse", "HEAD"]),
+        "images": merge_entries(entries),
         "charts": [{"name": n, "version": v, "repository": r, "digest": chart_digests[(r, n, v)]}
                    for r, n, v in charts],
-        "notScanned": [{"type": "grafana-plugin", "name": p,
-                        "reason": "Grafana downloads the plugin when the pod starts"}
-                       for p in sorted(plugins)],
+        "notScanned": not_scanned,
         "scanner": {"name": None, "version": None, "databaseUpdatedAt": None},
     }
-    if args.commit:
-        record["commit"] = args.commit
     problems = validate_record(record)
     if problems:
         sys.exit("record does not match its schema:\n  " + "\n  ".join(problems))

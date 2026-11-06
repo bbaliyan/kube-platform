@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cilium
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: cilium-agent
+          image: quay.io/cilium/cilium:v1.20.4@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        - name: labels
+          args:
+            - --selector=app.kubernetes.io/name:foo

@@ -121,17 +121,28 @@ It holds:
 
 - **images**: every image with its digest. The list is the union of two sources.
   - `rendered`: the images in the rendered example clusters. The script does not
-    grep `image:`. It also reads images that a grep misses: arguments (the
-    cert-manager solver, the Prometheus operator config reloader), the
-    repository, image and version fields of the GPU operator, and the image of a
-    system-upgrade Plan (`rancher/rke2-upgrade`). The registry gives the digest.
+    grep `image:`. It also reads images that a grep misses. These are:
+    arguments (the cert-manager solver, the Prometheus operator config
+    reloader), the GPU operator fields, and the image of a system-upgrade Plan
+    (`rancher/rke2-upgrade`). A GPU operator component with `enabled: false` is
+    skipped.
   - `runtime`: the images the containers report after the kind run. The digest
     is the `imageID` the node pulled. It wins over the registry.
+  - `digestSource` says where the digest came from. `runtime` is the digest of
+    a running container. `registry` is what the registry returned for the tag
+    when the record was built, or the digest written in the manifest.
+    A `registry` digest says what the tag points at now. It does not prove that
+    any node pulled it.
+  - One entry exists for each repository and digest. A tag beside a digest is
+    dropped.
 - **charts**: name, version, repository and digest. The digest is the digest of
   the chart archive (the value in the repository index), or the OCI manifest
   digest.
-- **notScanned**: what a container downloads at start, which an image scan does
-  not see. Today these are the Grafana plugins.
+- **notScanned**: what an image scan does not see. These are the Grafana
+  plugins, which the pod downloads at start. They also include
+  `unresolved-image` entries: images the registry does not have under that
+  name. The GPU driver is one. The ClusterPolicy names `595.91.07`, and the
+  operator adds the OS suffix on the node.
 - **scanner**: name, version and database time. They stay `null`. The security
   gate fills them in.
 
@@ -141,7 +152,10 @@ To build it:
 2. Run `make test-integration RUNTIME_IMAGES_OUT=out/runtime-images.json`.
    The kind run writes the images its containers report to that file.
 3. Run `make promotion-record`. It needs docker buildx, helm and the network.
-   It writes `out/promotion-record.json` and stops if a digest cannot be found.
+   It writes `out/promotion-record.json`. It stops if a digest cannot be found,
+   except for an operator-built tag.
+   The registry calls retry 5 times, with growing waits. No Docker Hub login is
+   used, because this repo has none.
 
 In CI, the `record` job does this after the `integration` job and uploads the
 `promotion-record` artifact. It is not a required check. `make test-commit`

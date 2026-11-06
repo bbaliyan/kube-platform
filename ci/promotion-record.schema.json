@@ -4,7 +4,7 @@
   "description": "What a release of kube-platform contains. Built by ci/promotion_record.py.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "images", "charts", "notScanned", "scanner"],
+  "required": ["schemaVersion", "commit", "images", "charts", "notScanned", "scanner"],
   "properties": {
     "schemaVersion": { "const": 1 },
     "commit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
@@ -15,10 +15,14 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["reference", "digest", "sources"],
+        "required": ["reference", "digest", "digestSource", "sources"],
         "properties": {
           "reference": { "type": "string", "minLength": 1 },
           "digest": { "$ref": "#/$defs/digest" },
+          "digestSource": {
+            "description": "runtime: the digest of a running container. registry: what the registry returned for the tag when the record was built, or the digest written in the manifest.",
+            "enum": ["runtime", "registry"]
+          },
           "sources": {
             "type": "array",
             "minItems": 1,
@@ -50,7 +54,7 @@
         "additionalProperties": false,
         "required": ["type", "name", "reason"],
         "properties": {
-          "type": { "enum": ["grafana-plugin"] },
+          "type": { "enum": ["grafana-plugin", "unresolved-image"] },
           "name": { "type": "string", "minLength": 1 },
           "reason": { "type": "string", "minLength": 1 }
         }
@@ -64,7 +68,11 @@
       "properties": {
         "name": { "type": ["string", "null"] },
         "version": { "type": ["string", "null"] },
-        "databaseUpdatedAt": { "type": ["string", "null"], "format": "date-time" }
+        "databaseUpdatedAt": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        }
       }
     }
   },
