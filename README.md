@@ -217,6 +217,36 @@ on each cluster when you want it upgraded. A new RKE2 minor also needs the
 kind node image (`kindNodeVersion` in `ci/e2e/versions.yaml`) on the
 same minor, or `make test-integration` fails.
 
+## The `stable` branch: protection and break-glass
+
+Only the promote workflow moves `stable`. Two rulesets enforce this:
+
+- `stable` blocks updates, force-push and deletion on the branch.
+- `stable-tags` blocks creation, update and deletion of `stable-*` tags.
+
+The only bypass actor is the repository deploy key `kube-platform-promote`.
+Its private key is the secret `PROMOTE_DEPLOY_KEY` in the `promote`
+environment. That environment allows the `main` branch only and needs the
+owner's approval. The default `GITHUB_TOKEN` cannot be a bypass actor in a
+user-owned repository, which is why a deploy key is used.
+
+### Break-glass: move `stable` by hand
+
+Use this only if the promote workflow cannot run and `stable` must change.
+
+1. Open the repository Settings, then Rules, then Rulesets.
+2. Open the ruleset `stable`.
+3. Under Bypass list, add yourself with the mode "Always allow".
+4. Save the ruleset.
+5. Push the commit: `git push origin <sha>:stable`.
+6. Open the ruleset `stable` again.
+7. Remove yourself from the Bypass list.
+8. Save the ruleset.
+9. Verify the ruleset lists only the deploy key as a bypass actor.
+
+Warning: do not leave yourself on the Bypass list. The next promotion
+record would no longer prove who moved `stable`.
+
 ## CI
 
 Every PR and every commit to `main` is checked on GitHub's runners:
