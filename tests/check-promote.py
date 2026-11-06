@@ -115,7 +115,7 @@ class FastPath(unittest.TestCase):
 
     def test_the_reason_is_cleaned(self):
         self.assertEqual(promote.clean_reason("a\nb\x00c" + "x" * 400)[:5], "a b c")
-        self.assertEqual(len(promote.clean_reason("x" * 400)), 300)
+        self.assertEqual(len(promote.clean_reason("x" * 400)), promote.REASON_LIMIT)
 
 
 class SelectProgram(unittest.TestCase):
@@ -171,7 +171,12 @@ class GitHistory(unittest.TestCase):
             self.git(repo, "checkout", "-q", "main")
             self.git(repo, "merge", "-q", "--no-ff", "-m", f"Merge pr{i}", f"pr{i}")
             head = self.git(repo, "rev-parse", "HEAD")
-            table[head] = [] if days is None else [{"merged_at": at(days), "base": {"ref": "main"}}]
+            if days is None:
+                table[head] = []
+            elif days == "other-merge-commit":
+                table[head] = [{"merged_at": at(20), "merge_commit_sha": "f" * 40, "base": {"ref": "main"}}]
+            else:
+                table[head] = [{"merged_at": at(days), "merge_commit_sha": head, "base": {"ref": "main"}}]
         fake = Path(tmp, "bin")
         fake.mkdir()
         Path(tmp, "table.json").write_text(json.dumps(table))
@@ -206,6 +211,11 @@ class GitHistory(unittest.TestCase):
         self.assertEqual(sel["candidates"][0]["known"], True)
         self.assertEqual(len(sel["candidates"]), 1)
 
+    def test_a_pull_request_whose_merge_commit_is_another_commit_does_not_count(self):
+        sel, _, _ = self.select([12, "other-merge-commit", 9])
+        self.assertEqual(len(sel["candidates"]), 1)
+        self.assertEqual(promote.parse_time(sel["candidates"][0]["landedAt"]), promote.parse_time(at(12)))
+
     def test_nothing_old_enough_yet(self):
         sel, _, _ = self.select([3, 1])
         self.assertEqual(sel["action"], "nothing")
@@ -220,28 +230,60 @@ class GitHistory(unittest.TestCase):
         self.assertFalse(sel["aggregateApproval"])
 
 
-class Fallback(unittest.TestCase):
-    SHAS = [sha(1), sha(2), sha(3)]
+def needs(results, approvals=("", "", ""), shas=(sha(1), sha(2), sha(3)), jobs=None, failed=("", "", "")):
+    """The shape of toJSON(needs) in the choose job. results: the inner result output of each
+    candidate ('pass', 'fail' or None for a candidate that did not run)."""
+    n = {"select": {"result": "success", "outputs": {f"candidate_{i + 1}": sha_ for i, sha_ in enumerate(shas)}}}
+    for i, r in enumerate(results):
+        if r is None:
+            n[f"candidate-{i + 1}"] = {"result": "skipped", "outputs": {}}
+            continue
+        job = (jobs or {}).get(i, "success" if r == "pass" else "failure")
+        outputs = {"result": r, "needs_approval": approvals[i], "failed": failed[i],
+                   "scanned_digest": f"{i + 1}" * 64, "risk_digest": f"{i + 4}" * 64}
+        n[f"candidate-{i + 1}"] = {"result": job, "outputs": outputs}
+    return n
 
+
+class Fallback(unittest.TestCase):
     def test_the_first_pass_wins(self):
-        self.assertEqual(promote.choose(self.SHAS, ["pass", "pass", "skipped"], ["false", "true", ""]), (1, sha(1), "false"))
+        picked, _ = promote.choose(needs(["pass", None, None], ["false", "", ""]))
+        self.assertEqual((picked["slot"], picked["sha"], picked["needs_approval"]), (1, sha(1), "false"))
 
     def test_a_failed_candidate_hands_over_to_the_next_older_one(self):
-        self.assertEqual(promote.choose(self.SHAS, ["fail", "pass", "skipped"], ["", "true", ""]), (2, sha(2), "true"))
-        self.assertEqual(promote.choose(self.SHAS, ["fail", "fail", "pass"], ["", "", "false"]), (3, sha(3), "false"))
+        picked, rows = promote.choose(needs(["fail", "pass", None], ["", "true", ""], failed=("tests(failure)", "", "")))
+        self.assertEqual((picked["slot"], picked["sha"]), (2, sha(2)))
+        self.assertEqual(picked["scanned_digest"], "2" * 64)
+        self.assertEqual(picked["risk_digest"], "5" * 64)
+        self.assertEqual(rows[0]["failed"], "tests(failure)")
+        picked, _ = promote.choose(needs(["fail", "fail", "pass"], ["", "", "false"]))
+        self.assertEqual(picked["slot"], 3)
 
     def test_nothing_passes(self):
-        self.assertEqual(promote.choose(self.SHAS, ["fail", "fail", "fail"], ["", "", ""]), (0, "", ""))
-        self.assertEqual(promote.choose(["", "", ""], ["skipped"] * 3, [""] * 3), (0, "", ""))
+        self.assertIsNone(promote.choose(needs(["fail", "fail", "fail"]))[0])
+        self.assertIsNone(promote.choose(needs([None, None, None], shas=("", "", "")))[0])
 
-    def test_a_missing_approval_value_means_approval_is_needed(self):
-        self.assertEqual(promote.choose(self.SHAS, ["pass", "", ""], ["", "", ""])[2], "true")
-        self.assertEqual(promote.choose(self.SHAS, ["pass", "", ""], [])[2], "true")
-        self.assertEqual(promote.choose(self.SHAS, ["pass", "", ""], ["FALSE", "", ""])[2], "true")
+    def test_a_missing_or_odd_approval_value_means_approval_is_needed(self):
+        for value in ("", "FALSE", "no"):
+            self.assertEqual(promote.choose(needs(["pass", None, None], [value, "", ""]))[0]["needs_approval"], "true")
 
-    def test_a_skipped_or_unknown_result_is_never_chosen(self):
-        self.assertEqual(promote.choose(self.SHAS, ["skipped", "cancelled", "pass"], ["", "", ""])[0], 3)
-        self.assertEqual(promote.choose(self.SHAS, ["success", "", ""], ["", "", ""])[0], 0)
+    def test_a_job_that_did_not_succeed_is_never_chosen_even_if_its_output_says_pass(self):
+        for outcome in ("failure", "cancelled", "skipped"):
+            self.assertIsNone(promote.choose(needs(["pass", None, None], jobs={0: outcome}))[0], outcome)
+
+    def test_a_candidate_without_a_selected_commit_is_never_chosen(self):
+        self.assertIsNone(promote.choose(needs(["pass", None, None], shas=("", "", "")))[0])
+
+    def test_the_program_reads_needs_from_the_environment(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d, "o")
+            res = subprocess.run([sys.executable, str(TOOL), "choose"], capture_output=True, text=True,
+                                 env={**os.environ, "GITHUB_OUTPUT": str(out),
+                                      "NEEDS_JSON": json.dumps(needs(["fail", "pass", None], ["", "false", ""]))})
+            self.assertEqual(res.returncode, 0, res.stderr)
+            values = dict(line.split("=", 1) for line in out.read_text().splitlines())
+            self.assertEqual((values["slot"], values["sha"], values["needs_approval"]), ("2", sha(2), "false"))
+            self.assertIn("failure", res.stdout)
 
 
 def deps(images=(), charts=()):
@@ -330,10 +372,28 @@ class Baseline(unittest.TestCase):
     def test_no_release_without_the_flag_stops_the_run(self):
         self.assertNotEqual(self.run_baseline([])[0], 0)
 
-    def test_the_first_promotion_flag_with_no_release_is_allowed(self):
-        code, out = self.run_baseline([], "--first-promotion")
+    def first(self, stable, tags=""):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "t.txt").write_text(tags)
+            return self.run_baseline([], "--first-promotion", "--stable-sha", stable, "--tags", f"{d}/t.txt")
+
+    def test_the_first_promotion_flag_with_no_release_is_allowed_at_the_initial_commit(self):
+        code, out = self.first(promote.INITIAL_STABLE)
         self.assertEqual(code, 0)
         self.assertIn("first_promotion=true", out)
+
+    def test_the_first_promotion_is_refused_when_a_stable_tag_exists(self):
+        code, _ = self.first(promote.INITIAL_STABLE, f"{'a' * 40}\trefs/tags/stable-20261101\n")
+        self.assertNotEqual(code, 0)
+
+    def test_the_first_promotion_is_refused_when_stable_has_moved(self):
+        self.assertNotEqual(self.first("7" * 40)[0], 0)
+
+    def test_the_first_promotion_is_refused_without_the_stable_commit_and_tag_list(self):
+        self.assertNotEqual(self.run_baseline([], "--first-promotion")[0], 0)
+
+    def test_the_initial_commit_is_the_documented_one(self):
+        self.assertEqual(promote.INITIAL_STABLE, "26229cc6fb30845eb7b323d80e113ae5d83012ef")
 
     def test_the_first_promotion_flag_with_a_release_is_refused(self):
         self.assertNotEqual(self.run_baseline([{"tagName": "stable-20261101"}], "--first-promotion")[0], 0)
@@ -554,6 +614,7 @@ class WorkflowRules(unittest.TestCase):
     def test_the_container_image_is_the_one_tiers_pins(self):
         images = {j["container"] for j in self.tiers["jobs"].values() if "container" in j}
         images |= {j["container"] for j in self.candidate["jobs"].values() if "container" in j}
+        images |= {j["container"] for j in self.promote["jobs"].values() if "container" in j}
         self.assertEqual(len(images), 1, images)
 
     def test_the_helm_version_matches_tiers(self):
@@ -569,10 +630,12 @@ class WorkflowRules(unittest.TestCase):
 
     def test_the_default_token_is_read_only_except_where_a_job_needs_more(self):
         for doc in (self.promote, self.candidate):
-            self.assertEqual(doc["permissions"], {"contents": "read"})
+            self.assertEqual(doc["permissions"], {})
+            for name, job in doc["jobs"].items():
+                self.assertIn("permissions", job, name)
         for name, job in self.candidate["jobs"].items():
-            self.assertNotIn("permissions", job, name)
             self.assertNotIn("environment", job, name)
+            self.assertLessEqual(set(job["permissions"].items()), {("contents", "read")}, name)
         writers = {n for n, j in self.promote["jobs"].items() if j.get("permissions", {}).get("contents") == "write"}
         self.assertEqual(writers, {"promote", "key-proof-outside"})
 
@@ -637,11 +700,13 @@ class WorkflowRules(unittest.TestCase):
         self.assertIn("!inputs.dry_run", job["if"])
         self.assertIn("needs.choose.result == 'success'", job["if"])
         self.assertIn("inputs.dry_run", self.promote["jobs"]["dry-run"]["if"])
-        self.assertNotIn("permissions", self.promote["jobs"]["dry-run"])
+        self.assertEqual(self.promote["jobs"]["dry-run"]["permissions"], {"contents": "read"})
+        self.assertNotIn("environment", self.promote["jobs"]["dry-run"])
 
     def test_the_promote_job_pushes_the_tag_before_the_branch_and_publishes_last(self):
         order = [s.get("id") for s in steps_of(self.promote["jobs"]["promote"]) if s.get("id")]
-        self.assertEqual(order, ["prepare", "load", "tag", "draft", "push", "publish"])
+        self.assertEqual(order, ["prepare", "immutable", "load", "tag", "attest", "draft", "push", "publish",
+                                 "undo_release", "undo_tag"])
 
     def test_the_trusted_jobs_run_only_on_main(self):
         self.assertIn("refs/heads/main", self.promote["jobs"]["select"]["if"])
@@ -655,6 +720,351 @@ class WorkflowRules(unittest.TestCase):
                     for expr in re.findall(r"\$\{\{(.*?)\}\}", run):
                         self.assertRegex(expr.strip(), r"^(inputs\.(slot|candidate|stable_sha)|github\.run_id)$",
                                          f"{name}/{job_name}: {expr}")
+
+
+    def test_no_pip_install_without_hashes(self):
+        for name, text in self.texts.items():
+            for line in text.splitlines():
+                if "pip install" in line and not line.lstrip().startswith("#"):
+                    self.assertIn("--require-hashes", line, f"{name}: {line.strip()}")
+                    self.assertIn("-r trusted/ci/requirements-promote.txt", line, name)
+
+    def test_the_requirements_file_pins_every_package_with_hashes(self):
+        lines = (ROOT / "ci/requirements-promote.txt").read_text().splitlines()
+        pins = [i for i, line in enumerate(lines) if re.match(r"^[A-Za-z0-9_.-]+==", line)]
+        self.assertGreaterEqual(len(pins), 2)
+        for i in pins:
+            self.assertTrue(lines[i].endswith("\\"), lines[i])
+            self.assertIn("--hash=sha256:", lines[i + 1])
+
+    def test_the_jobs_after_select_run_in_the_pinned_image(self):
+        for name in ("choose", "dry-run", "promote", "key-proof"):
+            self.assertEqual(self.promote["jobs"][name]["container"], self.tiers["jobs"]["commit"]["container"], name)
+
+    def test_attestation_verification_pins_the_source_and_the_issuer(self):
+        run = next(s["run"] for s in steps_of(self.promote["jobs"]["select"]) if s.get("id") == "baseline")
+        self.assertIn("--source-ref refs/heads/main", run)
+        self.assertIn("--cert-oidc-issuer https://token.actions.githubusercontent.com", run)
+        self.assertIn("--signer-workflow", run)
+
+    def test_immutability_is_required_before_the_key_is_loaded(self):
+        ids = [s.get("id") for s in steps_of(self.promote["jobs"]["promote"])]
+        self.assertLess(ids.index("immutable"), ids.index("load"))
+        step = next(s for s in steps_of(self.promote["jobs"]["promote"]) if s.get("id") == "immutable")
+        self.assertIn("IMMUTABLE_RELEASES_CONFIRMED", json.dumps(step))
+        self.assertIn("exit 1", step["run"])
+
+    def test_the_download_of_every_artifact_checks_its_digest(self):
+        for name, doc in (("promote", self.promote), ("candidate", self.candidate)):
+            for job_name, job in doc["jobs"].items():
+                for s in steps_of(job):
+                    if s.get("uses", "").startswith("actions/download-artifact"):
+                        self.assertEqual(s["with"].get("digest-mismatch"), "error", f"{name}/{job_name}")
+
+    def test_the_jobs_that_make_results_report_digests_and_consumers_get_them(self):
+        outs = self.candidate["on"]["workflow_call"]["outputs"] if "on" in self.candidate else self.candidate[True]["workflow_call"]["outputs"]
+        self.assertIn("scanned_digest", outs)
+        self.assertIn("risk_digest", outs)
+        for job in ("choose", "dry-run", "promote"):
+            env = " ".join(json.dumps(s.get("env", {})) for s in steps_of(self.promote["jobs"][job]))
+            for name in ("SELECT_DIGEST", "SCANNED_DIGEST", "RISK_DIGEST"):
+                self.assertIn(name, env, job)
+
+    def test_key_proof_deletes_its_tag_in_an_always_step(self):
+        steps = steps_of(self.promote["jobs"]["key-proof"])
+        delete = next(s for s in steps if s.get("name") == "Delete the throwaway tag")
+        self.assertIn("always()", delete["if"])
+        create = next(s for s in steps if s.get("id") == "create")
+        self.assertNotIn("--delete", create["run"])
+
+    def test_renovate_never_automerges_a_change_to_the_promote_files(self):
+        config = json.loads((ROOT / "renovate.json").read_text())
+        rules = [r for r in config["packageRules"] if "matchFileNames" in r]
+        self.assertEqual(len(rules), 1)
+        self.assertIs(rules[0]["automerge"], False)
+        for path in (".github/workflows/promote.yaml", ".github/workflows/promote-candidate.yaml"):
+            self.assertIn(path, rules[0]["matchFileNames"])
+        self.assertIn("pip-compile", config["enabledManagers"])
+
+    def test_the_risk_job_waits_for_the_commit_tier(self):
+        self.assertEqual(self.candidate["jobs"]["risk"]["needs"], "tests")
+
+
+def evaluate(expression, outcomes, failed, cancelled):
+    """Evaluate a step condition of the promote job for a given run."""
+    expr = expression.strip()
+    expr = re.sub(r"^\$\{\{|\}\}$", "", expr).strip()
+    expr = re.sub(r"steps\.(\w+)\.outcome", lambda m: repr(outcomes.get(m.group(1), "skipped")), expr)
+    expr = expr.replace("failure()", repr(failed)).replace("cancelled()", repr(cancelled))
+    expr = expr.replace("&&", " and ").replace("||", " or ")
+    return eval(expr, {"__builtins__": {}}, {})  # noqa: S307
+
+
+class UndoConditions(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        steps = steps_of(load("promote.yaml")["jobs"]["promote"])
+        cls.cond = {s["id"]: s["if"] for s in steps if s.get("id") in ("undo_release", "undo_tag")}
+
+    def undo(self, **outcomes):
+        failed = any(v == "failure" for v in outcomes.values())
+        cancelled = any(v == "cancelled" for v in outcomes.values())
+        base = {"load": "success", "tag": "success", "draft": "success", "push": "success", "publish": "success"}
+        base.update(outcomes)
+        return (evaluate(self.cond["undo_release"], base, failed, cancelled),
+                evaluate(self.cond["undo_tag"], base, failed, cancelled))
+
+    def test_success_undoes_nothing(self):
+        self.assertEqual(self.undo(), (False, False))
+
+    def test_a_failed_tag_step_deletes_neither(self):
+        self.assertEqual(self.undo(tag="failure", draft="skipped", push="skipped", publish="skipped"), (False, False))
+
+    def test_a_failed_draft_deletes_the_tag_only(self):
+        self.assertEqual(self.undo(draft="failure", push="skipped", publish="skipped"), (False, True))
+
+    def test_a_failed_push_deletes_both(self):
+        self.assertEqual(self.undo(push="failure", publish="skipped"), (True, True))
+
+    def test_a_cancel_before_the_push_deletes_both(self):
+        self.assertEqual(self.undo(push="cancelled", publish="skipped"), (True, True))
+        self.assertEqual(self.undo(draft="cancelled", push="skipped", publish="skipped"), (False, True))
+
+    def test_a_failed_publish_after_the_push_deletes_nothing(self):
+        self.assertEqual(self.undo(publish="failure"), (False, False))
+
+    def test_the_tag_is_not_deleted_if_the_key_never_loaded(self):
+        self.assertEqual(self.undo(load="failure", tag="skipped", draft="skipped", push="skipped", publish="skipped"), (False, False))
+
+
+class Escaping(unittest.TestCase):
+    def test_markdown_html_and_mentions_are_escaped(self):
+        out = promote.escape_text("fix <img src=x onerror=1> [a](http://x) @owner `c` | *b* _i_ #1 ![i] \\ &amp;\nnew")
+        bare = re.sub(r"&(#\d+|amp|lt|gt);", "", out)
+        for bad in ("<", ">", "[", "]", "`", "|", "*", "_", "#", "!", "\\", "&"):
+            self.assertNotIn(bad, bare)
+        self.assertNotIn("@owner", out)
+        self.assertNotIn("\n", out)
+        self.assertIn("&amp;amp;", out)
+
+    def test_the_stored_reason_is_cut(self):
+        self.assertEqual(len(promote.clean_reason("x" * 1000)), promote.REASON_LIMIT)
+
+    def test_the_summary_and_release_text_use_the_escaped_reason(self):
+        sel = valid_selection("fast-path", "fix @owner <b>x</b>")
+        self.assertNotIn("@owner", promote.markdown_selection({**sel, "headSha": "a" * 40, "action": "promote",
+                                                              "candidates": [], "stableSha": STABLE}))
+        with tempfile.TemporaryDirectory() as d:
+            for name, data in (("s.json", sel), ("r.json", valid_record())):
+                Path(d, name).write_text(json.dumps(data))
+            Path(d, "m.md").write_text("md")
+            res = subprocess.run([sys.executable, str(TOOL), "notes", "--select", f"{d}/s.json", "--record", f"{d}/r.json",
+                                  "--risk-md", f"{d}/m.md", "--candidate", CANDIDATE, "--tag", "stable-20261115",
+                                  "--repo", "o/r"], capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, res.stderr)
+            self.assertNotIn("<b>", res.stdout)
+            self.assertNotIn("@owner", res.stdout)
+
+
+class Digests(unittest.TestCase):
+    def run_check(self, path, expected):
+        return subprocess.run([sys.executable, str(TOOL), "check-digest", "--path", str(path), "--expected", expected],
+                              capture_output=True, text=True).returncode
+
+    def test_a_file_and_a_directory_match_their_own_digest_and_nothing_else(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d, "a.json")
+            f.write_text("one")
+            tree = Path(d, "tree")
+            tree.mkdir()
+            Path(tree, "x.md").write_text("x")
+            Path(tree, "y.json").write_text("y")
+            fd, td = promote.tree_digest(f), promote.tree_digest(tree)
+            self.assertEqual((self.run_check(f, fd), self.run_check(tree, td)), (0, 0))
+            self.assertNotEqual(self.run_check(f, td), 0)
+            self.assertNotEqual(self.run_check(f, ""), 0)
+            self.assertNotEqual(self.run_check(f, "not-a-digest"), 0)
+            f.write_text("two")
+            self.assertNotEqual(self.run_check(f, fd), 0)
+            Path(tree, "y.json").write_text("changed")
+            self.assertNotEqual(self.run_check(tree, td), 0)
+            Path(tree, "y.json").write_text("y")
+            Path(tree, "extra").write_text("e")
+            self.assertNotEqual(self.run_check(tree, td), 0)
+
+    def test_a_symlink_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "real").write_text("r")
+            try:
+                os.symlink(Path(d, "real"), Path(d, "link"))
+            except OSError:
+                self.skipTest("no symlinks")
+            with self.assertRaises(SystemExit):
+                promote.tree_digest(Path(d, "link"))
+
+
+@unittest.skipUnless(shutil.which("make") and shutil.which("git"), "no make")
+class Overlay(unittest.TestCase):
+    def test_the_candidate_gets_the_trusted_rules_and_symlinks_are_not_followed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            trusted, candidate, outside = Path(tmp, "trusted"), Path(tmp, "candidate"), Path(tmp, "outside")
+            for d in (trusted, candidate, outside):
+                d.mkdir()
+            shutil.copy(ROOT / "Makefile", trusted / "Makefile")
+            for d in ("ci", "tests", ".githooks"):
+                (trusted / d).mkdir()
+                (trusted / d / "rule").write_text("trusted")
+            (trusted / ".gitleaks.toml").write_text("trusted")
+            (trusted / "renovate.json").write_text("{}")
+            # The candidate has its own versions of everything, a file the trusted tree lacks,
+            # a symlinked directory and a symlinked file, and a symlinked .github.
+            (outside / "rule").write_text("outside")
+            (candidate / "Makefile").write_text("evil")
+            (candidate / "tests").mkdir()
+            (candidate / "tests" / "rule").write_text("evil")
+            (candidate / "tests" / "extra").write_text("evil")
+            (candidate / ".yamllint").write_text("evil")
+            (candidate / ".shellcheckrc").write_text("evil")
+            try:
+                os.symlink(outside, candidate / "ci")
+                os.symlink(outside / "rule", candidate / ".gitleaks.toml")
+                os.symlink(outside, candidate / ".githooks")
+                os.symlink(outside, candidate / ".github")
+            except OSError:
+                self.skipTest("no symlinks")
+            res = subprocess.run(["make", "-C", str(trusted), "promote-overlay", f"CANDIDATE={candidate}"],
+                                 capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            for rel in ("ci/rule", "tests/rule", ".githooks/rule"):
+                self.assertEqual((candidate / rel).read_text(), "trusted", rel)
+            self.assertEqual((candidate / ".gitleaks.toml").read_text(), "trusted")
+            self.assertEqual((candidate / "Makefile").read_text(), (trusted / "Makefile").read_text())
+            self.assertFalse((candidate / "tests" / "extra").exists())
+            self.assertFalse((candidate / ".yamllint").exists())
+            self.assertFalse((candidate / ".shellcheckrc").exists())
+            for rel in ("ci", ".githooks", ".gitleaks.toml", ".github"):
+                self.assertFalse((candidate / rel).is_symlink(), rel)
+            self.assertEqual((outside / "rule").read_text(), "outside")
+            self.assertEqual(sorted(p.name for p in outside.iterdir()), ["rule"])
+
+
+@unittest.skipUnless(shutil.which("git") and shutil.which("bash"), "no git")
+class PrepareScript(unittest.TestCase):
+    """ci/promote-prepare.sh against a real git repository with a bare origin."""
+
+    def git(self, repo, *args):
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+        return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True, env=env).stdout.strip()
+
+    def build(self, tmp, existing_tags=(), diverge=False):
+        origin, repo = Path(tmp, "origin.git"), Path(tmp, "repo")
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+        subprocess.run(["git", "clone", "-q", str(origin), str(repo)], check=True, capture_output=True)
+        self.git(repo, "commit", "-q", "--allow-empty", "-m", "base")
+        stable = self.git(repo, "rev-parse", "HEAD")
+        self.git(repo, "push", "-q", "origin", "HEAD:refs/heads/main", f"{stable}:refs/heads/stable")
+        if diverge:
+            self.git(repo, "checkout", "-q", "-b", "side", stable)
+            self.git(repo, "commit", "-q", "--allow-empty", "-m", "side")
+            candidate = self.git(repo, "rev-parse", "HEAD")
+            self.git(repo, "checkout", "-q", "main")
+            self.git(repo, "commit", "-q", "--allow-empty", "-m", "main moves")
+            self.git(repo, "push", "-q", "origin", "main", f"{candidate}:refs/heads/side")
+            self.git(repo, "push", "-q", "origin", f"{self.git(repo, 'rev-parse', 'main')}:refs/heads/stable", "-f")
+        else:
+            self.git(repo, "commit", "-q", "--allow-empty", "-m", "change")
+            candidate = self.git(repo, "rev-parse", "HEAD")
+            self.git(repo, "push", "-q", "origin", "main")
+        for tag in existing_tags:
+            self.git(repo, "push", "-q", "origin", f"{stable}:refs/tags/{tag}")
+        return repo, stable, candidate
+
+    def inputs(self, tmp, stable, candidate):
+        now = datetime.now(timezone.utc)
+        record = valid_record(commit=candidate, baseline=stable)
+        record["scan"]["scannedAt"] = promote.iso(now - timedelta(hours=1))
+        record["scanner"]["databaseUpdatedAt"] = promote.iso(now - timedelta(hours=3))
+        sel = valid_selection()
+        sel.update(stableSha=stable)
+        sel["candidates"] = [{"sha": candidate, "landedAt": promote.iso(now - timedelta(days=8)), "known": True}]
+        base = Path(tmp, "inputs")
+        for sub in ("select", "scanned", "risk"):
+            (base / sub).mkdir(parents=True)
+        files = {base / "select/select.json": sel, base / "scanned/promotion-record-scanned.json": record,
+                 base / "risk/manifest-risk.json": RISK, base / "risk/revert.json": REVERT}
+        for path, data in files.items():
+            path.write_text(json.dumps(data))
+        (base / "risk/manifest-risk.md").write_text("no additions")
+        digests = {"SELECT_DIGEST": promote.tree_digest(base / "select/select.json"),
+                   "SCANNED_DIGEST": promote.tree_digest(base / "scanned/promotion-record-scanned.json"),
+                   "RISK_DIGEST": promote.tree_digest(base / "risk")}
+        return base, digests
+
+    def run_prepare(self, repo, candidate, base, digests, first="false"):
+        out = Path(repo, "gh-output")
+        out.unlink(missing_ok=True)
+        env = {**os.environ, "CANDIDATE": candidate, "FIRST_PROMOTION": first, "GITHUB_REPOSITORY": "o/r",
+               "GITHUB_OUTPUT": str(out), **digests}
+        # ci/ comes from the real repository; the work tree is the temporary clone.
+        shutil.copytree(ROOT / "ci", repo / "ci", dirs_exist_ok=True)
+        res = subprocess.run(["bash", str(ROOT / "ci/promote-prepare.sh"), str(base)], cwd=repo, env=env, capture_output=True, text=True)
+        return res, (dict(line.split("=", 1) for line in out.read_text().splitlines()) if out.exists() else {})
+
+    def test_a_valid_candidate_gets_the_next_free_tag_and_release_files(self):
+        today = f"stable-{datetime.now(timezone.utc):%Y%m%d}"
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, stable, candidate = self.build(tmp, [today])
+            base, digests = self.inputs(tmp, stable, candidate)
+            res, out = self.run_prepare(repo, candidate, base, digests)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertEqual(out["tag"], f"{today}-2")
+            self.assertEqual(out["stable_sha"], stable)
+            for f in ("promotion-record.json", "manifest-risk.json", "manifest-risk.md", "notes.md"):
+                self.assertTrue(Path(repo, "release", f).exists(), f)
+
+    def test_the_first_tag_of_the_day_has_no_suffix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, stable, candidate = self.build(tmp)
+            base, digests = self.inputs(tmp, stable, candidate)
+            res, out = self.run_prepare(repo, candidate, base, digests)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertEqual(out["tag"], f"stable-{datetime.now(timezone.utc):%Y%m%d}")
+
+    def test_a_candidate_that_does_not_descend_from_stable_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, stable, candidate = self.build(tmp, diverge=True)
+            new_stable = self.git(repo, "ls-remote", "origin", "refs/heads/stable").split()[0]
+            base, digests = self.inputs(tmp, new_stable, candidate)
+            res, _ = self.run_prepare(repo, candidate, base, digests)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("ancestor", res.stderr)
+
+    def test_an_artifact_that_differs_from_its_digest_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, stable, candidate = self.build(tmp)
+            base, digests = self.inputs(tmp, stable, candidate)
+            for key in digests:
+                bad = {**digests, key: "0" * 64}
+                res, _ = self.run_prepare(repo, candidate, base, bad)
+                self.assertNotEqual(res.returncode, 0, key)
+            Path(base, "risk/manifest-risk.md").write_text("changed after the digest")
+            res, _ = self.run_prepare(repo, candidate, base, digests)
+            self.assertNotEqual(res.returncode, 0)
+
+    def test_a_missing_digest_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, stable, candidate = self.build(tmp)
+            base, digests = self.inputs(tmp, stable, candidate)
+            res, _ = self.run_prepare(repo, candidate, base, {k: v for k, v in digests.items() if k != "RISK_DIGEST"})
+            self.assertNotEqual(res.returncode, 0)
+
+    def test_stable_having_moved_since_the_selection_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, stable, candidate = self.build(tmp)
+            base, digests = self.inputs(tmp, "9" * 40, candidate)
+            res, _ = self.run_prepare(repo, candidate, base, digests)
+            self.assertNotEqual(res.returncode, 0)
 
 
 if __name__ == "__main__":

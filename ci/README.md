@@ -81,16 +81,20 @@ Makefile runs the checks. The workflow files only set up and call them.
    checks and writes the review text to its summary: the scan counts, the
    revert check and the manifest-risk diff.
 4. **Promote.** The `promote` job waits for the owner. After the approval it
-   repeats the checks, pushes the tag, attests the record, creates a draft
-   release, pushes the commit to `stable`, and publishes the release. A
-   failure before the push removes the tag and the draft.
+   repeats the checks, requires release immutability, pushes the tag, attests
+   the record, creates a draft release, pushes the commit to `stable`, and
+   publishes the release. If the job fails or is cancelled before the push, one
+   step removes the draft release if it exists and another removes the tag if
+   it exists. Neither removes anything once `stable` is at the candidate.
 
 ### The candidate rule
 
 A commit has landed when its pull request merged. `ci/promote.py` reads the
-merge time from the GitHub API. It does not use the commit date, because the
-author of a push that skips a pull request chooses that date. A commit with no
-merged pull request counts as landed now. The age of a candidate is the age of
+merge time from the GitHub API, and only from a pull request whose merge commit
+is that commit. It does not use the commit date, because the author of a push
+that skips a pull request chooses that date. A commit with no such pull request
+counts as landed now. This includes the commits of a rebase merge, so use merge
+commits or squash merges. The age of a candidate is the age of
 the youngest commit between `stable` and the candidate, so a commit that claims
 an early time cannot hide a younger change under it. A candidate younger than
 7 days is never chosen on the weekly run.
@@ -107,7 +111,13 @@ The candidate is data. The workflow checks out the main commit that started the
 run (the trusted checkout) and the candidate side by side. `make promote-overlay`
 then replaces `ci/`, `tests/` and the `Makefile` of the candidate checkout with
 the trusted ones. The scripts, the Makefile, `render.py`, `render-base.sh` and
-`registry-allowlist.yaml` are therefore never the candidate's own. The `scan`
+`registry-allowlist.yaml` are therefore never the candidate's own. The same
+holds for the settings the commit tier reads: `.githooks`, `.gitleaks.toml`,
+`.gitleaksignore`, `.pipelinelintignore`, `.shellcheckrc`, the yamllint and
+actionlint settings, and `renovate.json` (the list is `OVERLAY_PATHS` in the
+Makefile). A path that the trusted tree lacks is removed from the candidate, a
+symlink in the candidate is removed and never followed, and each copy is
+compared with the trusted one. The `scan`
 job, which runs the security gate and reads its ignore file, does not check out
 the candidate at all.
 
@@ -122,6 +132,24 @@ exception: the `scan` step gets the read-only Docker Hub token if both
 `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` exist. The `promote` job has the
 deploy key. It does not check out the candidate. It fetches the history of
 `main`, which holds the candidate commit as data.
+
+The jobs after `select` run in the pinned kube-devenv image, which has the
+Python packages, git, gh and ssh. The jobs that run on the plain runner (the
+kind run, the record and the risk job) install packages only from
+`ci/requirements-promote.txt` of the trusted checkout, with
+`pip install --require-hashes`. Renovate updates that file through its
+`pip-compile` manager. To change a package, edit `ci/requirements-promote.in`
+and run `pip-compile --generate-hashes --strip-extras` to write the `.txt`.
+Renovate never automerges a change to the promote workflows, the promote
+scripts or this file.
+
+Each job that makes a result writes a SHA-256 digest of it as a job output:
+the runtime image list, the record, the scanned record, the manifest-risk files
+and the selection. The job that reads the result checks its downloaded copy
+against that digest (`ci/promote.py check-digest`), and `ci/promote-prepare.sh`
+refuses to continue on a mismatch. The digest is computed from the files, so
+it can be compared after the download. The download step also uses
+`digest-mismatch: error`.
 
 ### Approval
 
@@ -147,12 +175,17 @@ Open Actions, select Promote and choose Run workflow on `main`.
   than 7 days, the review text says that the approval covers the aggregate diff
   of all of them. The security gate and the revert check still apply.
 - **First promotion.** Set `first_promotion`. It is allowed only when no
-  `stable-YYYYMMDD` release exists, and a run without the flag refuses to
-  promote without a baseline. The gate then blocks only on a KEV finding.
+  `stable-YYYYMMDD` release exists, no `stable-*` tag exists, and `stable` is
+  still at the commit it was created at (`INITIAL_STABLE` in
+  `ci/promote.py`). A run without the flag refuses to promote without a
+  baseline. The gate then blocks only on a KEV finding.
 - **Key proof.** Set `prove_key`. The run does nothing else. In the `promote`
   environment it creates a throwaway tag `stable-probe-...` with the deploy key
-  and deletes it. In a job outside the environment it tries the same with the
-  workflow token, and the job passes only if the push is rejected. The tag
+  and deletes it in a step that always runs. In a job outside the environment
+  it tries the same with the workflow token, and the job passes only if the
+  push is rejected. If a probe tag stays behind (for example when the runner is
+  lost), delete it by hand with a credential that the `stable-tags` ruleset lets
+  through: `git push origin --delete refs/tags/stable-probe-key-<run id>-<attempt>`. The tag
   ruleset has the same bypass rule as the one for `stable`, and the probe never
   touches `stable`. The first job waits for the owner, like every job in that
   environment.
@@ -173,14 +206,18 @@ choose Review deployments and approve.
   `manifest-risk.md`. The release text carries the manifest-risk diff.
 - Verify a record with
   `gh attestation verify promotion-record.json --repo <owner>/<repo>`.
-  The next run does this itself with the record of the current `stable`. It
-  stops if the record does not match the commit of `stable`.
+  The next run does this itself with the record of the current `stable`, and
+  also requires the source ref `refs/heads/main` and the GitHub Actions token
+  issuer. It stops if the record does not match the commit of `stable`.
 
 ### Settings the workflow needs
 
 - The repository setting for immutable releases must be on. The `promote` job
-  stops before the push if it can read the setting and finds it off. It fails
-  after the publish if the release is not immutable.
+  checks it before it loads the key. If the token can read the setting and it
+  is off, the job stops. If the token cannot read it, the job stops unless the
+  repository variable `IMMUTABLE_RELEASES_CONFIRMED` is `true`. Set that
+  variable after you turn the setting on. The job also fails after the publish
+  if the release is not immutable.
 - The `stable` and `stable-tags` rulesets, the `promote` environment and the
   secret `PROMOTE_DEPLOY_KEY` must exist.
 - Optional: the secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.

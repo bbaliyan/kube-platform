@@ -10,7 +10,8 @@
     "helmv3",
     "kubernetes",
     "github-actions",
-    "gitlabci"
+    "gitlabci",
+    "pip-compile"
   ],
   "kubernetes": {
     "description": "Plain, non-templated manifests carrying a container image. Scoped deliberately: everything else under platform/ is a Helm template, which this manager cannot parse.",
@@ -62,6 +63,22 @@
         "kubernetes-sigs/kind"
       ],
       "automerge": false
+    },
+    {
+      "description": "The promote workflow can move stable and holds the deploy key. A person reads every change to it, its scripts and its pinned packages.",
+      "matchFileNames": [
+        ".github/workflows/promote.yaml",
+        ".github/workflows/promote-candidate.yaml",
+        "ci/promote*",
+        "ci/requirements-promote.*"
+      ],
+      "automerge": false
     }
-  ]
+  ],
+  "pip-compile": {
+    "description": "The hash-pinned Python packages that the promote workflow installs (ci/requirements-promote.in compiles to the .txt).",
+    "managerFilePatterns": [
+      "/^ci/requirements-promote\\.txt$/"
+    ]
+  }
 }

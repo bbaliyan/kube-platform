@@ -6,14 +6,16 @@
 # A script is needed because the steps join git, ci/promote.py and file copies
 # in one place that both jobs must run the same way; no action does this.
 #
-#   CANDIDATE=<sha> FIRST_PROMOTION=true|false ci/promote-prepare.sh [inputs-dir]
+#   CANDIDATE=<sha> FIRST_PROMOTION=true|false \
+#     SELECT_DIGEST=... SCANNED_DIGEST=... RISK_DIGEST=... ci/promote-prepare.sh [inputs-dir]
 #
 # inputs-dir holds the downloaded artifacts of the chosen candidate:
 #   select/select.json  scanned/promotion-record-scanned.json
 #   risk/manifest-risk.json  risk/manifest-risk.md  risk/revert.json
 # It writes release/ (the files for the release and the attestation) and, when
 # GITHUB_OUTPUT is set, the outputs `tag` and `stable_sha`. It trusts none of the
-# gate jobs: ci/promote.py verify re-checks the record, the verdict, the commit,
+# gate jobs: it compares each input with the digest its job reported, and
+# ci/promote.py verify re-checks the record, the verdict, the commit,
 # the baseline and the age of the scan.
 set -euo pipefail
 
@@ -22,6 +24,13 @@ set -euo pipefail
 in="${1:-inputs}"
 first=()
 [ "${FIRST_PROMOTION:-false}" = true ] && first=(--first-promotion)
+
+# Each artifact must be the one its producing job described. The digests come
+# from job outputs, not from the artifacts.
+: "${SELECT_DIGEST:?SELECT_DIGEST is not set}" "${SCANNED_DIGEST:?SCANNED_DIGEST is not set}" "${RISK_DIGEST:?RISK_DIGEST is not set}"
+python3 ci/promote.py check-digest --path "$in/select/select.json" --expected "$SELECT_DIGEST"
+python3 ci/promote.py check-digest --path "$in/scanned/promotion-record-scanned.json" --expected "$SCANNED_DIGEST"
+python3 ci/promote.py check-digest --path "$in/risk" --expected "$RISK_DIGEST"
 
 stable="$(git ls-remote origin refs/heads/stable | cut -f1)"
 [[ "$stable" =~ ^[a-f0-9]{40}$ ]] || { echo "prepare: cannot read stable" >&2; exit 1; }

@@ -5,11 +5,18 @@
 # Trust: the workflow file, its scripts, the Makefile, render.py,
 # render-base.sh and the registry allowlist come from the trusted checkout
 # (the main commit of the run). The candidate is checked out beside it as data.
-# make promote-overlay then replaces the candidate's ci/, tests/ and Makefile
-# with the trusted ones, so nothing the candidate carries can judge itself.
+# make promote-overlay then replaces the candidate's ci/, tests/, Makefile and
+# lint settings with the trusted ones, so nothing the candidate carries can
+# judge itself.
 #
 # No job here has a secret, except the scan step that gets the read-only
-# Docker Hub token. No job here can write to the repository.
+# Docker Hub token. No job here can write to the repository. Python packages
+# come from a hash-pinned file of the trusted checkout, or from the pinned
+# kube-devenv image.
+#
+# Each job that makes a result the final job relies on writes a digest of it as
+# a job output. The job that reads the result checks the downloaded copy
+# against that digest.
 name: Promote candidate
 
 on:
@@ -31,6 +38,11 @@ on:
         description: '"true" if no stable release exists yet.'
         required: true
         type: string
+      baseline_digest:
+        description: Digest of the baseline record, from the select job. Empty for the first promotion.
+        required: false
+        type: string
+        default: ''
     secrets:
       DOCKERHUB_USERNAME:
         required: false
@@ -46,9 +58,14 @@ on:
       failed:
         description: The jobs that did not succeed.
         value: ${{ jobs.result.outputs.failed }}
+      scanned_digest:
+        description: Digest of the scanned record.
+        value: ${{ jobs.scan.outputs.scanned_digest }}
+      risk_digest:
+        description: Digest of the manifest-risk files and the revert check.
+        value: ${{ jobs.risk.outputs.risk_digest }}
 
-permissions:
-  contents: read
+permissions: {}
 
 # bash with pipefail, so a failing command in a pipe fails the step.
 defaults:
@@ -59,6 +76,8 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
     container: ghcr.io/bbaliyan/kube-devenv:0.13.1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -81,6 +100,8 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -97,7 +118,7 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=helm/helm
           version: v4.3.1
-      - run: pip install --quiet pyyaml
+      - run: pip install --quiet --require-hashes -r trusted/ci/requirements-promote.txt
       # stable is the genesis: a version bump is tested as the upgrade it is for a cluster that follows stable.
       - id: first
         run: make test-integration GENESIS_REF="$STABLE_SHA" RUNTIME_IMAGES_OUT=out/runtime-images.json
@@ -116,6 +137,8 @@ jobs:
         working-directory: candidate
         env:
           STABLE_SHA: ${{ inputs.stable_sha }}
+      - id: runtime
+        run: python3 trusted/ci/promote.py digest --path candidate/out/runtime-images.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: runtime-images-${{ inputs.slot }}
@@ -126,11 +149,15 @@ jobs:
           name: kind-logs-${{ inputs.slot }}
           path: candidate/kind-logs/
           if-no-files-found: ignore
+    outputs:
+      runtime_digest: ${{ steps.runtime.outputs.digest }}
 
   record:
     needs: integration
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -146,25 +173,37 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=helm/helm
           version: v4.3.1
-      - run: pip install --quiet pyyaml jsonschema
+      - run: pip install --quiet --require-hashes -r trusted/ci/requirements-promote.txt
       - run: make render
         working-directory: candidate
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: runtime-images-${{ inputs.slot }}
           path: candidate/out/
+          digest-mismatch: error
+      - run: python3 trusted/ci/promote.py check-digest --path candidate/out/runtime-images.json --expected "$EXPECTED"
+        env:
+          EXPECTED: ${{ needs.integration.outputs.runtime_digest }}
       - run: make promotion-record
         working-directory: candidate
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - id: digest
+        run: python3 trusted/ci/promote.py digest --path candidate/out/promotion-record.json
+      - id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: promotion-record-${{ inputs.slot }}
           path: candidate/out/promotion-record.json
+    outputs:
+      record_digest: ${{ steps.digest.outputs.digest }}
+      record_artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
 
   # Needs no candidate checkout: it reads the record and the stable record.
   scan:
     needs: record
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
     container: ghcr.io/bbaliyan/kube-devenv:0.13.1
     env:
       DOCKER_CONFIG: /tmp/docker-config
@@ -177,11 +216,20 @@ jobs:
         with:
           name: promotion-record-${{ inputs.slot }}
           path: out/
+          digest-mismatch: error
+      - run: python3 ci/promote.py check-digest --path out/promotion-record.json --expected "$EXPECTED"
+        env:
+          EXPECTED: ${{ needs.record.outputs.record_digest }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: ${{ inputs.first_promotion != 'true' }}
         with:
           name: baseline-record
           path: out/baseline/
+          digest-mismatch: error
+      - run: python3 ci/promote.py check-digest --path out/baseline/promotion-record.json --expected "$EXPECTED"
+        if: ${{ inputs.first_promotion != 'true' }}
+        env:
+          EXPECTED: ${{ inputs.baseline_digest }}
       # The one step that holds a secret: a read-only Docker Hub token, only to
       # avoid rate limits on shared runner addresses. Without it the scans run
       # anonymously.
@@ -206,8 +254,11 @@ jobs:
         if: ${{ inputs.first_promotion == 'true' }}
       - run: rm -rf "$DOCKER_CONFIG"
         if: ${{ always() }}
+      - id: digest
+        run: python3 ci/promote.py digest --path out/promotion-record-scanned.json
       # Only a pass uploads the scanned record, so its name never hides a block.
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ success() }}
         with:
           name: scanned-record-${{ inputs.slot }}
@@ -220,12 +271,19 @@ jobs:
             out/security-summary.md
             out/scan-results.json
           if-no-files-found: ignore
+    outputs:
+      scanned_digest: ${{ steps.digest.outputs.digest }}
+      scanned_artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
 
   # Renders the candidate and stable with the trusted render.py, which fetches
-  # the chart repositories the candidate names. This job has no secret.
+  # the chart repositories the candidate names. This job has no secret. It
+  # waits for the commit tier, so a candidate that fails it costs no render.
   risk:
+    needs: tests
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -242,7 +300,7 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=helm/helm
           version: v4.3.1
-      - run: pip install --quiet pyyaml jsonschema
+      - run: pip install --quiet --require-hashes -r trusted/ci/requirements-promote.txt
       - run: git worktree add --detach ../stable-src "$STABLE_SHA"
         working-directory: candidate
         env:
@@ -256,20 +314,24 @@ jobs:
           STABLE_SHA: ${{ inputs.stable_sha }}
       - run: make promote-revert-check
         working-directory: candidate
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ !cancelled() }}
+      - id: digest
+        run: python3 trusted/ci/promote.py digest --path candidate/out/manifest-risk
+      - id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: risk-${{ inputs.slot }}
           path: candidate/out/manifest-risk/
-          if-no-files-found: ignore
     outputs:
       needs_approval: ${{ steps.risk.outputs.needs_approval }}
+      risk_digest: ${{ steps.digest.outputs.digest }}
+      risk_artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
 
   result:
     needs: [tests, integration, record, scan, risk]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions: {}
     outputs:
       result: ${{ steps.summary.outputs.result }}
       needs_approval: ${{ steps.summary.outputs.needs_approval }}

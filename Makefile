@@ -144,8 +144,9 @@ manifest-risk: render
 
 # The promote workflow (ci/README.md "Promote workflow") judges a candidate with
 # the scripts of a trusted checkout (main HEAD), never with the candidate's own.
-#   promote-overlay        run in the trusted checkout: replace ci/, tests/ and the
-#                          Makefile of the candidate checkout CANDIDATE with the
+#   promote-overlay        run in the trusted checkout: replace ci/, tests/, the
+#                          Makefile and the lint and secret-scan settings of the
+#                          candidate checkout CANDIDATE (OVERLAY_PATHS) with the
 #                          trusted ones, so the candidate is data only
 #   promote-revert-check   run in the overlaid candidate checkout after
 #                          manifest-risk: compare the charts and images of the
@@ -158,9 +159,27 @@ STABLE_ROOT ?= ../stable-src
 .PHONY: promote-overlay promote-revert-check test-promote
 test-scripts: test-promote
 
+# Everything the commit tier reads as a rule, not as data under test. A path the
+# trusted tree lacks is removed from the candidate. A symlink in the candidate
+# is removed, never followed. Each copy is compared with the trusted one.
+OVERLAY_PATHS = ci tests Makefile .githooks .gitleaks.toml .gitleaksignore .pipelinelintignore \
+	.shellcheckrc .yamllint .yamllint.yaml .yamllint.yml renovate.json \
+	.github/actionlint.yaml .github/actionlint.yml .github/zizmor.yml .github/zizmor.yaml
+
 promote-overlay:
-	rm -rf "$(CANDIDATE)/ci" "$(CANDIDATE)/tests" "$(CANDIDATE)/Makefile"
-	cp -r ci tests Makefile "$(CANDIDATE)/"
+	test -d "$(CANDIDATE)"
+	for p in $(OVERLAY_PATHS); do \
+		parent="$$(dirname "$$p")"; \
+		if [ "$$parent" != . ] && [ -L "$(CANDIDATE)/$$parent" ]; then rm "$(CANDIDATE)/$$parent"; fi; \
+		rm -rf "$(CANDIDATE)/$$p"; \
+		if [ -e "$$p" ] || [ -L "$$p" ]; then \
+			mkdir -p "$(CANDIDATE)/$$parent"; \
+			cp -a "$$p" "$(CANDIDATE)/$$p"; \
+			diff -r --no-dereference "$$p" "$(CANDIDATE)/$$p" || exit 1; \
+		elif [ -e "$(CANDIDATE)/$$p" ] || [ -L "$(CANDIDATE)/$$p" ]; then \
+			echo "promote-overlay: $$p was not removed"; exit 1; \
+		fi; \
+	done
 
 promote-revert-check:
 	test -d out/head -a -d out/base

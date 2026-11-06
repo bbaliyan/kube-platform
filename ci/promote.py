@@ -12,11 +12,12 @@ scan, manifest-risk diff) stays in the Makefile.
 
     ci/promote.py select   --repo-root . --head SHA --repo OWNER/NAME --out out/select.json
                            [--fast-path-reason TEXT] [--stable-ref origin/stable]
-    ci/promote.py baseline --releases releases.json [--first-promotion]
+    ci/promote.py baseline --releases releases.json [--first-promotion --stable-sha SHA --tags FILE]
     ci/promote.py check-baseline --record FILE --stable-sha SHA
     ci/promote.py deps     --rendered out/head --repo-root . --out deps.json
     ci/promote.py revert-check --candidate deps.json --head deps.json --stable deps.json --out revert.json
-    ci/promote.py choose   --shas A,B,C --results fail,pass,skipped --approvals ,false,
+    ci/promote.py choose   (reads toJSON(needs) from the environment variable NEEDS_JSON)
+    ci/promote.py digest / check-digest --path FILE_OR_DIR [--expected SHA256]
     ci/promote.py review   --select S --record R --risk J --risk-md M --revert V --candidate SHA
     ci/promote.py verify   --select S --record R --risk J --revert V --candidate SHA --stable-sha SHA
     ci/promote.py tag-name < ls-remote-output
@@ -48,6 +49,7 @@ approval must cover the aggregate diff of all of them, and the summary says so.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -65,6 +67,10 @@ MAX_COMMITS = 300
 MAX_RECORD_AGE_HOURS = 72
 NOTES_LIMIT = 100_000
 SUMMARY_LIMIT = 400_000
+# The commit that `stable` was created at. A first promotion is allowed only while
+# stable is still here and no stable-* tag exists.
+INITIAL_STABLE = "26229cc6fb30845eb7b323d80e113ae5d83012ef"
+REASON_LIMIT = 200
 TAG_RE = re.compile(r"^stable-\d{8}(-\d+)?$")
 SHA_RE = re.compile(r"^[a-f0-9]{40}$")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
@@ -95,7 +101,20 @@ def set_output(**values):
 
 
 def clean_reason(text):
-    return CONTROL.sub(" ", (text or "")).strip()[:300]
+    """The reason as stored: no control characters, cut to REASON_LIMIT."""
+    return CONTROL.sub(" ", (text or "")).strip()[:REASON_LIMIT]
+
+
+ESCAPES = {"&": "&amp;", "<": "&lt;", ">": "&gt;", "`": "'", "|": "&#124;", "[": "&#91;", "]": "&#93;",
+           "*": "&#42;", "_": "&#95;", "~": "&#126;", "#": "&#35;", "!": "&#33;", "\\": "&#92;", "@": "@\u200b"}
+
+
+def escape_text(text):
+    """Text that is safe in Markdown, HTML and a mention. It follows clean() in
+    ci/manifest_risk.py and also escapes the emphasis and link characters. One
+    pass, so an escape is never escaped again."""
+    text = re.sub(r"[\x00-\x1f\x7f\u00a0\u2028\u2029]+", " ", str(text))
+    return re.sub(r"[&<>`|\[\]*_~#!\\@]", lambda m: ESCAPES[m.group(0)], text)
 
 
 def load_json(path):
@@ -178,12 +197,14 @@ def is_ancestor(root, older, newer):
 
 def landed_at(repo, sha, branch):
     """The latest merged_at of the merged pull requests that hold the commit.
-    A pull request that merely contains the commit merged later, so taking the
-    latest time only makes a commit look younger."""
+    Only a pull request whose merge commit is this commit counts. A rebase
+    merge has none, so its commits have an unknown time and are never old
+    enough. That is the safe side."""
     out = run(["gh", "api", "-H", "Accept: application/vnd.github+json",
                f"repos/{repo}/commits/{sha}/pulls"]).stdout
     times = [pr["merged_at"] for pr in json.loads(out)
-             if pr.get("merged_at") and (pr.get("base") or {}).get("ref") == branch]
+             if pr.get("merged_at") and pr.get("merge_commit_sha") == sha
+             and (pr.get("base") or {}).get("ref") == branch]
     return max(times) if times else None
 
 
@@ -230,7 +251,7 @@ def markdown_selection(sel):
     lines = [f"## Candidate selection ({sel['mode']})", "",
              f"- main HEAD: `{sel['headSha']}`", f"- stable: `{sel['stableSha']}`"]
     if sel["mode"] == "fast-path":
-        lines.append(f"- fast path reason: {sel['fastPathReason']}")
+        lines.append(f"- fast path reason: {escape_text(sel['fastPathReason'])}")
         if sel["aggregateApproval"]:
             lines.append(f"- **{len(sel['youngerCommits'])} other commit(s) since stable are younger than "
                          f"{sel['soakDays']} days. Approve the aggregate diff of all of them.**")
@@ -252,10 +273,27 @@ def pick_baseline_tag(releases):
     return tags[-1] if tags else ""
 
 
+def check_first_promotion(stable_sha, tags_text):
+    """Problems that forbid a first promotion: any stable-* tag, or a stable
+    that has moved from the commit it was created at."""
+    problems = []
+    tags = [line.split()[-1] for line in tags_text.splitlines() if line.strip()]
+    if tags:
+        problems.append(f"tags exist ({', '.join(tags[:3])}); a first promotion needs none")
+    if stable_sha != INITIAL_STABLE:
+        problems.append(f"stable is at {stable_sha}, not at its initial commit {INITIAL_STABLE}")
+    return problems
+
+
 def cmd_baseline(args):
     tag = pick_baseline_tag(load_json(args.releases))
     if tag and args.first_promotion:
         sys.exit(f"first_promotion was set, but release {tag} exists. Run again without it.")
+    if args.first_promotion:
+        tags_text = Path(args.tags).read_text(encoding="utf-8") if args.tags else "unreadable"
+        problems = check_first_promotion(args.stable_sha or "", tags_text)
+        if problems:
+            sys.exit("first_promotion refused: " + "; ".join(problems))
     if not tag and not args.first_promotion:
         sys.exit("no stable release exists. If this is the first promotion, start the run by hand with "
                  "first_promotion set. A scheduled run does not promote without a baseline.")
@@ -342,23 +380,77 @@ def cmd_revert_check(args):
     return 1 if result["blocked"] else 0
 
 
+# ------------------------------------------------------------------- digest
+
+def tree_digest(path):
+    """One SHA-256 for a file or a directory: over the sorted relative names and
+    the digests of the files. The producing job writes it as a job output, and
+    each consumer checks the downloaded copy against it."""
+    path = Path(path)
+    if path.is_symlink():
+        sys.exit(f"{path} is a symlink")
+    files = [path] if path.is_file() else sorted(f for f in path.rglob("*") if f.is_file() or f.is_symlink())
+    if not files:
+        sys.exit(f"{path} holds no file")
+    lines = []
+    for f in files:
+        if f.is_symlink():
+            sys.exit(f"{f} is a symlink")
+        name = "." if f == path else f.relative_to(path).as_posix()
+        lines.append(f"{name} {hashlib.sha256(f.read_bytes()).hexdigest()}")
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()
+
+
+def cmd_digest(args):
+    value = tree_digest(args.path)
+    set_output(digest=value)
+    print(value)
+    return 0
+
+
+def cmd_check_digest(args):
+    value = tree_digest(args.path)
+    if not re.fullmatch(r"[a-f0-9]{64}", args.expected or "") or value != args.expected:
+        print(f"check-digest: {args.path} is {value}, the producing job said {args.expected or 'nothing'}", file=sys.stderr)
+        return 1
+    print(f"check-digest: {args.path} matches")
+    return 0
+
+
 # ------------------------------------------------------------------- choose
 
-def choose(shas, results, approvals):
-    """The first candidate whose evaluation passed. A skipped or failed one is
-    passed over. Approval is needed unless the result is exactly 'false'."""
-    for i, sha in enumerate(shas):
-        if sha and i < len(results) and results[i] == "pass":
-            approval = approvals[i] if i < len(approvals) else ""
-            return i + 1, sha, "false" if approval == "false" else "true"
-    return 0, "", ""
+SLOTS = (1, 2, 3)
+
+
+def choose(needs):
+    """The first candidate whose job succeeded and whose evaluation says pass.
+    needs is the `needs` context of the choose job (toJSON(needs)). A skipped,
+    failed or cancelled candidate is passed over. Approval is needed unless the
+    result is exactly 'false'."""
+    select = (needs.get("select") or {}).get("outputs") or {}
+    rows, picked = [], None
+    for slot in SLOTS:
+        node = needs.get(f"candidate-{slot}") or {}
+        out = node.get("outputs") or {}
+        sha = select.get(f"candidate_{slot}") or ""
+        outcome = node.get("result") or "skipped"
+        passed = bool(sha) and outcome == "success" and out.get("result") == "pass"
+        rows.append({"slot": slot, "sha": sha, "job": outcome, "failed": out.get("failed") or ""})
+        if passed and picked is None:
+            picked = {"slot": slot, "sha": sha, "needs_approval": "false" if out.get("needs_approval") == "false" else "true",
+                      "scanned_digest": out.get("scanned_digest") or "", "risk_digest": out.get("risk_digest") or ""}
+    return picked, rows
 
 
 def cmd_choose(args):
-    split = lambda s: s.split(",")  # noqa: E731
-    slot, sha, approval = choose(split(args.shas), split(args.results), split(args.approvals))
-    set_output(slot=slot or "", sha=sha, needs_approval=approval)
-    print(f"chosen slot {slot or 'none'} {sha}")
+    picked, rows = choose(json.loads(os.environ["NEEDS_JSON"]))
+    lines = ["## Candidates", ""]
+    for r in rows:
+        detail = f" (failed: {r['failed']})" if r["failed"] else ""
+        lines.append(f"- {r['slot']}: `{r['sha'] or 'none'}` {r['job']}{detail}")
+    print("\n".join(lines))
+    picked = picked or {"slot": "", "sha": "", "needs_approval": "", "scanned_digest": "", "risk_digest": ""}
+    set_output(**picked)
     return 0
 
 
@@ -387,6 +479,8 @@ def verify(sel, record, risk, revert, candidate, stable_sha, now, first_promotio
             problems.append("a weekly candidate is younger than the soak")
     if sel.get("mode") == "fast-path" and not sel.get("fastPathReason"):
         problems.append("a fast path run has no reason")
+    if len(sel.get("fastPathReason") or "") > REASON_LIMIT:
+        problems.append("the fast path reason is longer than the limit")
 
     problems += [f"record: {p}" for p in validate_record(record)]
     scan = record.get("scan") or {}
@@ -460,7 +554,7 @@ def cmd_review(args):
     lines = ["# Review before you approve", "", f"- candidate: `{args.candidate}`",
              f"- stable now: `{sel['stableSha']}`", f"- mode: {sel['mode']}"]
     if sel["mode"] == "fast-path":
-        lines.append(f"- fast path reason: {sel['fastPathReason']}")
+        lines.append(f"- fast path reason: {escape_text(sel['fastPathReason'])}")
         if sel["aggregateApproval"]:
             lines.append(f"- **{len(sel['youngerCommits'])} other commit(s) are younger than "
                          f"{sel['soakDays']} days. This approval covers the aggregate diff of all of them.**")
@@ -480,7 +574,7 @@ def cmd_notes(args):
     lines = [f"Promotion of `{args.candidate}` to `stable`.", "",
              f"- mode: {sel['mode']}"]
     if sel["mode"] == "fast-path":
-        lines.append(f"- fast path reason: {sel['fastPathReason']}")
+        lines.append(f"- fast path reason: {escape_text(sel['fastPathReason'])}")
     lines += [f"- images scanned: {scan.get('imagesScanned')} of {scan.get('imagesListed')}",
               f"- findings: {counts.get('blocking')} blocking, {counts.get('known')} known, "
               f"{counts.get('ignored')} ignored, {counts.get('kev')} on the KEV list",
@@ -531,6 +625,8 @@ def main():
     b = sub.add_parser("baseline")
     b.add_argument("--releases", required=True)
     b.add_argument("--first-promotion", action="store_true")
+    b.add_argument("--stable-sha", help="needed with --first-promotion")
+    b.add_argument("--tags", help="git ls-remote output for refs/tags/stable-*; needed with --first-promotion")
     b.set_defaults(fn=cmd_baseline)
 
     c = sub.add_parser("check-baseline")
@@ -550,11 +646,17 @@ def main():
     r.add_argument("--out", required=True)
     r.set_defaults(fn=cmd_revert_check)
 
-    ch = sub.add_parser("choose")
-    ch.add_argument("--shas", required=True)
-    ch.add_argument("--results", required=True)
-    ch.add_argument("--approvals", default="")
+    ch = sub.add_parser("choose", help="reads the needs context from the environment variable NEEDS_JSON")
     ch.set_defaults(fn=cmd_choose)
+
+    dg = sub.add_parser("digest")
+    dg.add_argument("--path", required=True)
+    dg.set_defaults(fn=cmd_digest)
+
+    cd = sub.add_parser("check-digest")
+    cd.add_argument("--path", required=True)
+    cd.add_argument("--expected", required=True)
+    cd.set_defaults(fn=cmd_check_digest)
 
     rv = sub.add_parser("review")
     for name in ("select", "record", "risk", "risk-md", "revert", "candidate"):
