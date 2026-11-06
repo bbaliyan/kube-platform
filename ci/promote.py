@@ -315,9 +315,9 @@ def cmd_check_baseline(args):
 
 def deps_of(rendered, repo_root):
     import promotion_record as pr
-    images, composed, apps, _ = pr.read_rendered(rendered)
+    images, apps, _ = pr.read_rendered(rendered)
     refs = set()
-    for ref in images | composed:
+    for ref in images:
         name, tag, digest = pr.parse_ref(ref)
         refs.add(pr.reference((name, None if digest else tag, digest)))
     charts = sorted([r, n, v] for r, n, v in pr.chart_requests(apps, repo_root))

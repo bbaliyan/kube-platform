@@ -21,7 +21,6 @@ to already be there.
 | Storage | AWS EBS, democratic-csi (TrueNAS iSCSI/NFS), Longhorn, local-path | `storageProvisioners` |
 | Metrics, dashboards, alerts | Prometheus, Grafana, Alertmanager | always |
 | Logs | Loki, collected by Alloy | always |
-| GPUs | NVIDIA GPU Operator, plus a GPU exporter and dashboard | `gpuOperatorEnabled` |
 | Node autoscaling | cluster-autoscaler on AWS, with the cloud controller manager | `clusterAutoscalerEnabled` |
 | DNS records | external-dns, publishing `DNSEndpoint` objects to Route53 | `externalDnsEnabled` |
 | Kubernetes upgrades | system-upgrade-controller and RKE2 upgrade Plans | always |

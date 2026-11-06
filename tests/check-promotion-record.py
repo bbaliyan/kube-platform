@@ -48,17 +48,13 @@ REGISTRY_ONLY = [  # images the fixtures hold, with a digest from the registry s
     "docker.io/library/nginx:1.29",
     "docker.io/grafana/grafana:13.2.0",
     "docker.io/library/busybox:1.37",
-    "nvcr.io/nvidia/k8s-device-plugin:v0.20.1",
-    "nvcr.io/nvidia/k8s/dcgm-exporter:4.6.1-4.8.4-distroless",
-    "nvcr.io/nvidia/cloud-native/k8s-driver-manager:v0.12.1",
     "quay.io/jetstack/cert-manager-acmesolver:v1.21.3",
     "quay.io/prometheus-operator/prometheus-config-reloader:v0.94.2",
     "quay.io/prometheus-operator/prometheus-operator:v0.94.2",
     "docker.io/rancher/rke2-upgrade:v1.37.1-rke2r1",
 ]
-DRIVER = "nvcr.io/nvidia/driver:595.91.07"
 CILIUM = "quay.io/cilium/cilium@sha256:" + "b" * 64
-TOOLKIT = "nvcr.io/nvidia/k8s/container-toolkit@sha256:" + "1" * 64
+PINNED = "registry.example.test/tools/pinned@sha256:" + "1" * 64
 ECR = "ecr-public.aws.com/docker/library/redis:8.6.4-alpine"
 MIRROR_ONLY = "mirror.gcr.io/library/redis:8.6.4-alpine"
 OCI_CHART = "registry.example.test/charts/oci-chart:2.0.0_build1"
@@ -109,9 +105,6 @@ class Record(unittest.TestCase):
         for ref in (
             "quay.io/jetstack/cert-manager-acmesolver:v1.21.3",
             "quay.io/prometheus-operator/prometheus-config-reloader:v0.94.2",
-                    "nvcr.io/nvidia/k8s/dcgm-exporter:4.6.1-4.8.4-distroless",
-            "nvcr.io/nvidia/cloud-native/k8s-driver-manager:v0.12.1",
-            TOOLKIT,
             "docker.io/rancher/rke2-upgrade:v1.37.1-rke2r1",
         ):
             self.assertNotIn(ref, grepped, f"the grep finds {ref}, so the case proves nothing")
@@ -144,7 +137,7 @@ class Record(unittest.TestCase):
         by = self.images()
         self.assertFalse(by[CILIUM]["runtimeDiffers"])
         self.assertEqual(by[CILIUM]["runtimeDigests"], ["sha256:" + "b" * 64])
-        self.assertEqual((by[TOOLKIT]["runtimeDigests"], by[TOOLKIT]["runtimeDiffers"]), ([], False))
+        self.assertEqual((by[PINNED]["runtimeDigests"], by[PINNED]["runtimeDiffers"]), ([], False))
 
     def test_an_image_id_is_named_by_the_repository_of_its_image_id(self):
         hubble = self.images()["quay.io/cilium/hubble-ui@sha256:" + "f" * 64]
@@ -169,15 +162,15 @@ class Record(unittest.TestCase):
         by = {r: i["digestSource"] for r, i in self.images().items()}
         self.assertEqual(by["docker.io/library/busybox:1.37"], "registry")
         self.assertEqual(by["quay.io/jetstack/cert-manager-controller:v1.21.3"], "registry")
-        self.assertEqual(by[TOOLKIT], "pinned")
+        self.assertEqual(by[PINNED], "pinned")
         self.assertEqual(set(by.values()), {"registry", "pinned"})
 
     def test_a_pinned_digest_that_the_registry_does_not_serve_fails_the_build(self):
         missing = Path(self.tmp.name, "missing")
-        missing.write_text(TOOLKIT + "\n", encoding="utf-8")
+        missing.write_text(PINNED + "\n", encoding="utf-8")
         res = self.run_builder(self.digests, out="missing.json", missing=missing)
         self.assertNotEqual(res.returncode, 0)
-        self.assertIn(TOOLKIT, res.stderr)
+        self.assertIn(PINNED, res.stderr)
         self.assertFalse(Path(self.tmp.name, "missing.json").exists())
 
     def test_helm_test_images_are_not_scanned_and_are_listed(self):
@@ -217,17 +210,6 @@ class Record(unittest.TestCase):
         bad["images"][0]["digestSource"] = "runtime"
         self.assertIn("digestSource", " ".join(promotion_record.validate_record(bad)))
 
-    def test_a_disabled_gpu_component_is_skipped(self):
-        listed = " ".join(self.images()) + json.dumps(self.record["notScanned"])
-        for text in ("vgpu-manager", "sandbox-device-plugin", "helper"):
-            self.assertNotIn(text, listed)
-
-    def test_a_gpu_driver_tag_the_registry_lacks_is_not_scanned_and_not_fatal(self):
-        self.assertNotIn(DRIVER, self.images())
-        self.assertIn({"type": "unresolved-image", "name": DRIVER,
-                       "reason": "the registry has no such tag; the operator builds the tag on the node"},
-                      self.record["notScanned"])
-
     def test_text_that_looks_like_an_image_is_not_one(self):
         f = promotion_record.image_from_text
         self.assertIsNone(f("--selector=app.kubernetes.io/name:foo"))
@@ -238,7 +220,7 @@ class Record(unittest.TestCase):
         self.assertEqual(f("registry.example.test/x@sha256:" + "c" * 64), "registry.example.test/x@sha256:" + "c" * 64)
 
     def test_pinned_digest_is_kept(self):
-        self.assertEqual(self.images()[TOOLKIT]["digest"], "sha256:" + "1" * 64)
+        self.assertEqual(self.images()[PINNED]["digest"], "sha256:" + "1" * 64)
 
     def test_charts(self):
         charts = {(c["name"], c["version"]): c for c in self.record["charts"]}

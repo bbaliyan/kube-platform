@@ -57,11 +57,6 @@ platformRevision: stable
 # show no data.
 hubbleEnabled: false
 
-# Adds the NVENC/NVDEC companion to the nvidia-gpu-exporter dashboards, which
-# don't chart the video engines. Set by the parent bootstrap Application from
-# its own gpuOperatorEnabled, whose dcgm-exporter feeds it.
-gpuOperatorEnabled: false
-
 # ClusterIssuer used to mint the prometheus-operator admission-webhook TLS
 # cert via cert-manager (see prometheus-app.yaml) instead of the chart's
 # default self-signed create/patch Jobs — those Jobs self-delete via

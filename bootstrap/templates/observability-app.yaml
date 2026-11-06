@@ -15,8 +15,6 @@ helm:
       value: {{ .Values.platformRevision | quote }}
     - name: hubbleEnabled
       value: {{ .Values.hubbleEnabled | default false | quote }}
-    - name: gpuOperatorEnabled
-      value: {{ .Values.gpuOperatorEnabled | default false | quote }}
     # A public ACME CA can't issue for in-cluster .svc names; empty
     # leaves the webhook certificate to the chart's own CA.
     - name: issuerName
