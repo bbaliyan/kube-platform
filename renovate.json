@@ -57,7 +57,6 @@
         "/^registry\\.k8s\\.io\\/sig-storage\\/csi-/",
         "/cloud-controller-manager$/",
         "cluster-autoscaler",
-        "/cluster-api/",
         "traefik",
         "kindest/node",
         "kubernetes-sigs/kind"

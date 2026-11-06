@@ -770,7 +770,7 @@ consumer writes it. Between them they switch on every optional template:
 |---|---|
 | `homelab-gpu.yaml` | single node, NVIDIA GPU, Hubble, two democratic-csi backends |
 | `aws.yaml` | kube-compute's `aws-cluster`: EBS, cluster-autoscaler + cloud controller manager, SSM secrets, BYO CA, external-dns, trusted internal CA |
-| `proxmox.yaml` | kube-compute's `proxmox-cluster`: Vault/OpenBao secrets and BYO CA, Cluster API autoscaling, local-path + Longhorn, extra Traefik port, Grafana plugins |
+| `proxmox.yaml` | kube-compute's `proxmox-cluster`: Vault/OpenBao secrets and BYO CA, local-path + Longhorn, extra Traefik port, Grafana plugins |
 | `azure-acme.yaml` | ACME certificates, Azure Key Vault secrets, Hubble off, no storage |
 | `kind.yaml` | what `make test-integration` deploys: self-signed certificates, Hubble, local-path |
 
