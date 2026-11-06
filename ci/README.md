@@ -636,12 +636,21 @@ lookup and a `stable` that is not an ancestor of `main` are incomplete too.
 ### Drift
 
 The workflow resolves each image reference and each chart again. For an image
-it asks the registry that the reference names, and no other. The record builder
-falls back to a mirror for some Docker Official Images. The watch does not: if
-the primary lookup fails, the digest is unresolved and the check is incomplete.
-It is never drift and never clean.
-For a chart it downloads the archive (or asks for the OCI manifest). It then
-compares the result with the digest in the record.
+it asks the registry that the reference names first. Some Docker Official
+Images are served by Docker Hub, the AWS public mirror and `mirror.gcr.io` with
+the same digest, and the record builder falls back to a mirror when the first
+registry refuses. The anonymous ECR Public registry answers `429 Too Many
+Requests` to a shared runner address, so this happens in practice.
+
+If the first lookup errors, the watch asks the mirrors of that image:
+
+- If a mirror returns the same digest as the record, the image counts as
+  resolved. The result notes "confirmed through" the mirror, and the rolling
+  issue lists the image under "Confirmed through a mirror".
+  While the first registry is down, this cannot find a tag move.
+- If a mirror returns another digest, or every lookup errors, the image is
+  unresolved and the check is incomplete. It is never drift and never clean.
+- If the first registry answers with another digest, that is drift.
 
 An entry with `digestSource: pinned` has its digest in the reference. A tag
 cannot move it. The check still asks the registry, so a digest that the
