@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Stand-in for `docker buildx imagetools inspect REF --format ...`. It prints
+# the digest that the test wrote for REF in $STUB_DIGESTS, one "REF DIGEST" per line.
+ref="$4"
+[ "$1 $2 $3" = "buildx imagetools inspect" ] || exit 2
+digest="$(awk -v r="$ref" '$1 == r { print $2 }' "$STUB_DIGESTS")"
+[ -n "$digest" ] || { echo "no such image: $ref" >&2; exit 1; }
+printf '%s' "$digest"

@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-operator
+  namespace: prometheus
+spec:
+  template:
+    spec:
+      containers:
+        - name: kube-prometheus-stack
+          image: quay.io/prometheus-operator/prometheus-operator:v0.94.2
+          args:
+            - --kubelet-service=kube-system/prometheus-kubelet
+            - --config-reloader-cpu-limit=0
+            - --prometheus-config-reloader=quay.io/prometheus-operator/prometheus-config-reloader:v0.94.2
+            - --web.listen-address=:10250

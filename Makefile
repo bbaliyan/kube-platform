@@ -5,11 +5,19 @@
 # only feeds a PR comment. It writes out/comment.md.
 #
 # test-commit runs inside the kube-devenv image. test-integration also needs
-# docker, kind, helm, kubectl, curl and python3 with pyyaml on PATH.
+# docker, kind, helm, kubectl, curl, jq and python3 with pyyaml on PATH.
 #   BASE_REF      commit the branch started from; empty skips commit-messages
 #   GENESIS_REF   commit whose platform-versions the kind cluster installs
 #                 first, so a version bump is tested as an upgrade; empty
 #                 uses the checked-out versions
+#   RUNTIME_IMAGES_OUT  file where test-integration writes the images the
+#                 containers report; empty writes nothing
+#
+# promotion-record is not part of test-commit: it needs the network, docker
+# buildx and the file that test-integration writes. Run make render, put that
+# file at RUNTIME_IMAGES, then run make promotion-record. It writes
+# out/promotion-record.json.
+RUNTIME_IMAGES ?= out/runtime-images.json
 
 SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -19,7 +27,7 @@ BASE_REF ?= $(shell git rev-parse --verify --quiet origin/main)
 export REQUIRE_SIGNOFF := 0
 
 .PHONY: test-commit test-fast test-integration hooks lint-scripts lint-yaml \
-	lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics secrets commit-messages diff-comment
+	lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics secrets commit-messages diff-comment promotion-record
 
 test-commit: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics commit-messages
 
@@ -43,6 +51,7 @@ test-scripts:
 	tests/preload-images.sh
 	tests/check-app-finalizers.sh
 	tests/check-observability-values.sh
+	tests/check-promotion-record.py
 
 lint-renovate:
 	python3 -c "import json; json.load(open('renovate.json'))"
@@ -72,6 +81,10 @@ diff-comment: render
 	ci/render-base.sh "$(BASE_REF)"
 	python3 ci/diff_comment.py out/base out/head out/comment.md
 	if [ -n "$${GITHUB_STEP_SUMMARY:-}" ]; then cat out/comment.md >> "$$GITHUB_STEP_SUMMARY"; fi
+
+promotion-record:
+	python3 ci/promotion_record.py build --rendered out/head --runtime "$(RUNTIME_IMAGES)" \
+		--out out/promotion-record.json --commit "$$(git rev-parse HEAD)"
 
 test-integration:
 	ci/e2e/run.sh

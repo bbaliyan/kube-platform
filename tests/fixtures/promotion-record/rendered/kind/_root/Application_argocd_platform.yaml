@@ -1,0 +1,10 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  source:
+    repoURL: https://github.com/example/kube-platform
+    path: bootstrap
+    targetRevision: main
