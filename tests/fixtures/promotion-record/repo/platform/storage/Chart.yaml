@@ -1,0 +1,7 @@
+apiVersion: v2
+name: storage
+version: 0.1.0
+dependencies:
+  - name: longhorn
+    repository: https://charts.longhorn.example.test
+    version: "1.13.0"

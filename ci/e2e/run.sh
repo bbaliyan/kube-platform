@@ -102,3 +102,12 @@ curl -sSf --retry 5 --retry-all-errors --cacert "$tmp/ca.crt" \
 # What the platform's own monitoring says once it's up: a scrape target that's
 # down or a rule that's true from the start.
 python3 ci/e2e/alerts.py 180
+
+# The images the containers report, digest included, for the promotion record
+# (ci/promotion_record.py).
+if [ -n "${RUNTIME_IMAGES_OUT:-}" ]; then
+  mkdir -p "$(dirname "$RUNTIME_IMAGES_OUT")"
+  kubectl get pods -A -o json | jq '[.items[].status
+      | ((.containerStatuses // []) + (.initContainerStatuses // []) + (.ephemeralContainerStatuses // []))[]
+      | {image, imageID}] | unique' > "$RUNTIME_IMAGES_OUT"
+fi

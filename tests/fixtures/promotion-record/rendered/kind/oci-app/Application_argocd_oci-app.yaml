@@ -1,0 +1,10 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: oci-app
+  namespace: argocd
+spec:
+  sources:
+    - repoURL: registry.example.test/charts
+      chart: oci-chart
+      targetRevision: 2.0.0+build1

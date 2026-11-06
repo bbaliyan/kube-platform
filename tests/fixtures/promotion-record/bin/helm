@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Stand-in for `helm pull NAME --repo URL --version V --destination DIR`. It
+# writes an archive whose content is "NAME V URL", so a test can compute the digest.
+[ "$1" = pull ] || exit 2
+name="$2"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --repo) repo="$2" ;;
+    --version) version="$2" ;;
+    --destination) dest="$2" ;;
+  esac
+  shift
+done
+printf '%s %s %s' "$name" "$version" "$repo" >"$dest/$name-$version.tgz"

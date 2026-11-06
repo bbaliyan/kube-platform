@@ -1,0 +1,25 @@
+apiVersion: nvidia.com/v1
+kind: ClusterPolicy
+metadata:
+  name: cluster-policy
+spec:
+  dcgmExporter:
+    image: dcgm-exporter
+    repository: nvcr.io/nvidia/k8s
+    version: 4.6.1-4.8.4-distroless
+  devicePlugin:
+    image: k8s-device-plugin
+    repository: nvcr.io/nvidia
+    version: v0.20.1
+  driver:
+    image: driver
+    repository: nvcr.io/nvidia
+    version: 595.91.07
+    manager:
+      image: k8s-driver-manager
+      repository: nvcr.io/nvidia/cloud-native
+      version: v0.12.1
+  toolkit:
+    image: container-toolkit
+    repository: nvcr.io/nvidia/k8s
+    version: sha256:1111111111111111111111111111111111111111111111111111111111111111

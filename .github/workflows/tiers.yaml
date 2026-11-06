@@ -86,10 +86,42 @@ jobs:
           # renovate: datasource=github-releases depName=helm/helm
           version: v4.3.1
       - run: pip install --quiet pyyaml
-      - run: make test-integration GENESIS_REF=${{ github.event.pull_request.base.sha }}
+      - run: make test-integration GENESIS_REF=${{ github.event.pull_request.base.sha }} RUNTIME_IMAGES_OUT=out/runtime-images.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: runtime-images
+          path: out/runtime-images.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ failure() }}
         with:
           name: kind-logs
           path: kind-logs/
           if-no-files-found: ignore
+
+  # Not a required check. It runs after integration and adds no time to it.
+  # It builds the promotion record from the rendered clusters and the images
+  # the kind run reported. See ci/README.md.
+  record:
+    needs: integration
+    if: ${{ needs.integration.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          # renovate: datasource=github-releases depName=helm/helm
+          version: v4.3.1
+      - run: pip install --quiet pyyaml jsonschema
+      - run: make render
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runtime-images
+          path: out/
+      - run: make promotion-record
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: promotion-record
+          path: out/promotion-record.json

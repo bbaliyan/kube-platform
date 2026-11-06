@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-grafana
+  namespace: prometheus
+data:
+  plugins: mssql,grafana-clock-panel
+  note: |
+    image: not.an.image/in-a-configmap:1

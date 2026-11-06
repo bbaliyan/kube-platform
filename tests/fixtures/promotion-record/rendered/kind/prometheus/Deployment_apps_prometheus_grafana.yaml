@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-grafana
+  namespace: prometheus
+spec:
+  template:
+    spec:
+      containers:
+        - name: grafana
+          image: docker.io/grafana/grafana:13.2.0
+          env:
+            - name: GF_PLUGINS_PREINSTALL_SYNC
+              valueFrom:
+                configMapKeyRef:
+                  key: plugins
+                  name: prometheus-grafana
+        - name: sidecar
+          image: busybox:1.37
