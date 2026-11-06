@@ -1,1 +1,12 @@
 clusterFqdnSuffix: ""
+
+# Sends any request on the web entry point (port 80) to HTTPS. Every platform
+# route is HTTPS only, so without this an http:// address gets Traefik's bare
+# 404, and an app that redirects to http:// after login (Sonarr, Radarr) ends on
+# that 404. The route has the lowest priority, so a route that a consumer adds on
+# the web entry point (an HTTP-01 challenge, a plain-HTTP webhook) still wins.
+httpRedirect:
+  enabled: true
+  # false answers 307, which a browser does not cache. true answers 308, which
+  # it does, so a host can never go back to plain HTTP for that browser.
+  permanent: false

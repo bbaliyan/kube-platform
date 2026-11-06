@@ -40,6 +40,7 @@ workloadsRevision: ""
 workloadsPath: ""
 gpuOperatorHelmValues: {}       # consumer-specific values (node selector/toleration, time-slicing config, etc.) merged over this Application's own driver.enabled: true default
 clusterFqdnSuffix: ""
+httpToHttpsRedirect: true        # send http:// requests on port 80 to HTTPS (needs clusterFqdnSuffix); set false when TLS ends before Traefik
 trustedCaPemB64: ""
 
 # Publishes DNSEndpoint objects a workload creates itself to Route53 — off by
