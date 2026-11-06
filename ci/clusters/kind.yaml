@@ -1,8 +1,9 @@
 # The cluster the integration tier builds in kind and syncs for real (see
 # ci/e2e/): a single node with self-signed certificates, Hubble and
 # local-path storage, so everything it runs works without a cloud, a NAS or
-# a GPU. It points both sources and platformRevision at the commit
-# under test.
+# a GPU. Like every example it follows `stable`. The integration tier does
+# not apply this file as it is: ci/e2e/point-at-commit.py sets both sources
+# and platformRevision to the commit under test.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -12,7 +13,7 @@ spec:
   project: default
   sources:
     - repoURL: https://github.com/bbaliyan/kube-platform.git
-      targetRevision: main
+      targetRevision: stable
       path: bootstrap
       helm:
         valueFiles:
@@ -21,7 +22,7 @@ spec:
           - name: platformRepoURL
             value: https://github.com/bbaliyan/kube-platform.git
           - name: platformRevision
-            value: main
+            value: stable
           - name: certMode
             value: selfsigned
           - name: clusterName
@@ -41,7 +42,7 @@ spec:
             - name: local-path
               type: local-path
     - repoURL: https://github.com/bbaliyan/kube-platform.git
-      targetRevision: main
+      targetRevision: stable
       ref: values
   destination:
     server: https://kubernetes.default.svc

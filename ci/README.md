@@ -252,8 +252,9 @@ They have pulled without trouble so far.
 `tests/preload-images.sh` tests this logic with stand-in `docker` and `kind`
 commands.
 
-Clusters sync this repo's `main` as soon as it moves, so every PR is checked
-against example clusters before it merges:
+Clusters follow `stable`, which only the promote workflow moves. Every PR is
+still checked against the example clusters before it merges, because a merge
+to `main` is a promotion candidate:
 
 1. `render.py` renders the platform for each example cluster in `clusters/`
    the way Argo CD would: the root `platform` Application, then every
@@ -267,8 +268,9 @@ against example clusters before it merges:
    PR comment (`diff_comment.py`, `render-base.sh`, `post-comment.sh`). The
    full render is the workflow's `rendered-manifests` artifact.
 4. `make test-integration` deploys it for real: a kind cluster, Cilium and Argo CD
-   installed the way a node's genesis installs them (at `main`'s versions,
-   so a bump is tested as an upgrade), then the `kind.yaml` example cluster
+   installed the way a node's genesis installs them (at the versions of the
+   base commit: the PR's base, or `stable` in the promote workflow, so a bump
+   is tested as an upgrade), then the `kind.yaml` example cluster
    pointed at the commit under test. It passes once every Application is
    Synced and Healthy and every pod ready, steadily for a minute, and Argo
    CD answers through Traefik with the platform's certificate, and the

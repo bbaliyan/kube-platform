@@ -45,8 +45,19 @@ lists them all.
 Upstream charts come in at pinned versions; anything this repo adds lives in
 `platform/`.
 
-Clusters follow `main`: a merge reaches every cluster within minutes. The
-exception is the RKE2 upgrade Plans, which each cluster syncs by hand.
+`main` deploys to nothing by default. Clusters follow `stable`, a branch that
+only the promote workflow moves. A commit reaches `stable` after a 7-day soak,
+a security gate, a review of risky manifest changes and the owner's approval.
+A change therefore reaches a cluster 7 to 14 days after it merges. A security
+fix can use the fast path, which skips the soak but not the gates or the
+approval. The exception is the RKE2 upgrade Plans, which each cluster syncs by
+hand. See "Using stable".
+
+This is why Renovate can wait only 1 day and automerge leaf apps. An automerge
+puts a change on `main`, and `main` runs nowhere unless a consumer chooses it.
+The 1-day wait limits PR churn from chart repositories that publish several
+releases a day. The 7-day soak of `stable` gives others time to find a bad release before a
+cluster runs it.
 
 ## Using it
 
@@ -54,6 +65,121 @@ Clusters built with [kube-compute](https://github.com/bbaliyan/kube-compute)
 get the root Application automatically. To write one by hand, copy the
 closest example from `ci/clusters/`. It must also load
 `platform/platform-versions/values.yaml`, as they do.
+
+## Using stable
+
+`stable` is the branch that clusters follow. The example clusters in
+`ci/clusters/` and the default `platformRevision` in `bootstrap/values.yaml`
+use it. This section is for people who run the platform. `ci/README.md`
+describes the promote workflow.
+
+### What the contract guarantees
+
+- Only the promote workflow moves `stable`. A ruleset blocks every other push,
+  force-push and deletion.
+- Every commit on `stable` passed the CI tiers, the security gate and the
+  manifest-risk review, and the owner approved it. Each commit was on `main`
+  for at least 7 days, unless the owner used the fast path with a written
+  reason. The fast path skips only the soak.
+- Every promotion publishes one release, `stable-YYYYMMDD`. A second promotion
+  on the same day gets the suffix `-2`. The release cannot be changed after
+  it is published.
+- The release holds `promotion-record.json`, `manifest-risk.json` and
+  `manifest-risk.md`. GitHub signs an attestation for the record. The record
+  lists every image with its digest, every chart with its version and digest,
+  what the scan could not see, and the scan result.
+
+The contract does not promise that `stable` has no vulnerabilities. A finding
+with no fix is published as known and does not block. The manifests name
+images by tag, so an upstream tag can change after review. The daily watch
+workflow compares the record with what the registries serve now.
+
+### Verify a promotion
+
+If you do not use the `gh` CLI yet, install it and sign in first.
+
+1. Find the newest release: `gh release view --repo bbaliyan/kube-platform --json tagName --jq .tagName`.
+2. Download its record. Replace `stable-YYYYMMDD` with the tag from step 1.
+
+   ```sh
+   gh release download stable-YYYYMMDD --repo bbaliyan/kube-platform --pattern promotion-record.json
+   ```
+
+3. Verify the attestation of the record.
+
+   ```sh
+   gh attestation verify promotion-record.json \
+     --repo bbaliyan/kube-platform \
+     --signer-workflow bbaliyan/kube-platform/.github/workflows/promote.yaml \
+     --source-ref refs/heads/main \
+     --cert-oidc-issuer https://token.actions.githubusercontent.com
+   ```
+
+4. If the command fails, do not trust the record. Open an issue.
+5. Read the commit of the record: `jq -r .commit promotion-record.json`.
+6. Read the commit of `stable`: `git ls-remote https://github.com/bbaliyan/kube-platform refs/heads/stable`.
+7. If the two commits differ, repeat from step 1. If they still differ, open an issue.
+
+The workflow runs the same command on the record of the current `stable` before
+every promotion.
+
+### Read the promotion record
+
+Run the commands in the directory that holds `promotion-record.json`.
+
+1. Show the verdict and the counts: `jq '.scan | {verdict, scannedAt, baselineCommit, counts}' promotion-record.json`.
+2. Verify that `verdict` is `pass`. A record with another verdict was not promoted.
+3. List the findings: `jq '.scan.findings[]' promotion-record.json`. They are all the HIGH and CRITICAL findings, and any finding on the CISA Known Exploited Vulnerabilities list.
+4. Read the `status` of each finding. A promoted record has no `blocking` finding.
+5. If the status is `known`, the finding has no fix yet, or the previous `stable` already had it.
+6. If the status is `ignored`, the owner accepted it in `ci/security-gate.trivyignore`, with a reason and an expiry date.
+7. List what the scan could not see: `jq '.notScanned' promotion-record.json`.
+8. List the images: `jq -r '.images[] | .reference + " " + .digest' promotion-record.json`.
+
+The record shows the state at the time of promotion. A vulnerability found
+later is not in it.
+
+### Read the known vulnerabilities issue
+
+The issue "Known vulnerabilities in stable" lists the vulnerabilities in the
+current `stable` as found today. The daily watch workflow creates and updates
+it. Nobody should edit it by hand.
+
+1. Open the issues of the repository and search for "Known vulnerabilities in stable".
+2. Read the list. It updates after each daily run.
+3. If a finding affects an image you run, open an issue. Say which one.
+
+The same workflow opens a separate priority issue if an upstream image or
+chart no longer matches the record, if a finding is on the CISA Known Exploited
+Vulnerabilities list, or if `stable` is more than 21 days behind `main`.
+
+### Follow main on purpose
+
+You can point a cluster at `main`. A merge then reaches it within minutes.
+
+You give up:
+
+- the 7-day soak, so a new upstream release can reach you on the day Renovate
+  merges it;
+- the security gate and the manifest-risk review, so a change that adds a
+  hook, a privileged container or a wildcard role reaches you unreviewed;
+- the promotion record, so no signed list says what you run;
+- the rolling vulnerability issue, which describes `stable` and not `main`.
+
+To follow `main`:
+
+1. If a tool such as kube-compute renders the root `platform` Application, change its input and render again. Otherwise open the Application.
+2. Set `targetRevision` to `main` on both sources.
+3. Set the parameter `platformRevision` to `main`.
+4. Apply the change.
+
+Set all three together. A mix would take the root from one branch and the
+child Applications from the other.
+
+### If stable looks wrong
+
+If `stable` breaks a cluster, or a record does not match what you see, open an
+issue in this repository. The owner has a runbook in the planning hub.
 
 ## Observability storage
 

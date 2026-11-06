@@ -192,3 +192,10 @@ promote-revert-check:
 
 test-promote:
 	tests/check-promote.py
+
+# Clusters follow `stable` by default, and the kind run still tests the commit.
+.PHONY: test-default-revision
+test-scripts: test-default-revision
+
+test-default-revision:
+	tests/check-default-revision.py
