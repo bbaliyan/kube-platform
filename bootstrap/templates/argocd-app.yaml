@@ -1,3 +1,91 @@
+{{- define "platform.argocdValues" -}}
+{{- $configs := mustMergeOverwrite (dict "cm" (dict "timeout.reconciliation" "30s" "timeout.reconciliation.jitter" "10s") "params" (dict "server.insecure" "true")) (deepCopy (.Values.argocdExtraConfigs | default dict)) -}}
+# configs.cm timeouts: how soon an Application whose comparison failed is
+# compared again. The default two minutes plus jitter was most of a new
+# cluster's bring-up time. Keep equal to the genesis render in kube-images.
+# server.insecure: TLS terminates upstream; Argo CD serves plain HTTP.
+configs:
+{{ toYaml $configs | indent 2 }}
+global:
+  {{- include "platform.placement" . | nindent 2 }}
+# The chart sets no resources. Requests are what a small cluster uses
+# steadily, limits the peak of rendering and syncing large charts. No CPU
+# limits, which would only throttle manifest generation and syncs. The
+# probes' upstream 1s timeout fails under brief CPU contention.
+controller:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 384Mi
+    limits:
+      memory: {{ .Values.argocdControllerMemoryLimit | quote }}
+  readinessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 5
+repoServer:
+  # Argo CD doesn't size Go's heap from the container limit; this is 90% of it.
+  env:
+    - name: GOMEMLIMIT
+      value: 920MiB
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 1Gi
+  readinessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 5
+  livenessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 5
+server:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 512Mi
+redis:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      memory: 256Mi
+applicationSet:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 256Mi
+notifications:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+dex:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+  # The copyutil init container copies the ~240 MB argocd binary into
+  # dex's pod, and the dirty pages that copy leaves count against its
+  # memory. It otherwise inherits dex's limit above and is sometimes
+  # OOMKilled on first start (seen in CI's e2e), succeeding on retry.
+  initImage:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 512Mi
+{{- end }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -9,6 +97,17 @@ metadata:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   project: default
+{{- if .Values.workloadsRepoURL }}
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      targetRevision: {{ .Values.argocdVersion | quote }}
+      helm:
+        {{- include "platform.workloadsValueFile" "argocd" | nindent 8 }}
+        values: |
+{{ include "platform.argocdValues" . | indent 10 }}
+    - {{ include "platform.workloadsSource" . | indent 6 | trim }}
+{{- else }}
   source:
     repoURL: https://argoproj.github.io/argo-helm
     chart: argo-cd
@@ -29,92 +128,8 @@ spec:
     targetRevision: {{ .Values.argocdVersion | quote }}
     helm:
       values: |
-{{- $configs := mustMergeOverwrite (dict "cm" (dict "timeout.reconciliation" "30s" "timeout.reconciliation.jitter" "10s") "params" (dict "server.insecure" "true")) (deepCopy (.Values.argocdExtraConfigs | default dict)) }}
-        # configs.cm timeouts: how soon an Application whose comparison failed is
-        # compared again. The default two minutes plus jitter was most of a new
-        # cluster's bring-up time. Keep equal to the genesis render in kube-images.
-        # server.insecure: TLS terminates upstream; Argo CD serves plain HTTP.
-        configs:
-{{ toYaml $configs | indent 10 }}
-        global:
-          {{- include "platform.placement" . | nindent 10 }}
-        # The chart sets no resources. Requests are what a small cluster uses
-        # steadily, limits the peak of rendering and syncing large charts. No CPU
-        # limits, which would only throttle manifest generation and syncs. The
-        # probes' upstream 1s timeout fails under brief CPU contention.
-        controller:
-          resources:
-            requests:
-              cpu: 250m
-              memory: 384Mi
-            limits:
-              memory: {{ .Values.argocdControllerMemoryLimit | quote }}
-          readinessProbe:
-            timeoutSeconds: 5
-            failureThreshold: 5
-        repoServer:
-          # Argo CD doesn't size Go's heap from the container limit; this is 90% of it.
-          env:
-            - name: GOMEMLIMIT
-              value: 920MiB
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              memory: 1Gi
-          readinessProbe:
-            timeoutSeconds: 5
-            failureThreshold: 5
-          livenessProbe:
-            timeoutSeconds: 5
-            failureThreshold: 5
-        server:
-          resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
-              memory: 512Mi
-        redis:
-          resources:
-            requests:
-              cpu: 20m
-              memory: 32Mi
-            limits:
-              memory: 256Mi
-        applicationSet:
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              memory: 256Mi
-        notifications:
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              memory: 128Mi
-        dex:
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              memory: 128Mi
-          # The copyutil init container copies the ~240 MB argocd binary into
-          # dex's pod, and the dirty pages that copy leaves count against its
-          # memory. It otherwise inherits dex's limit above and is sometimes
-          # OOMKilled on first start (seen in CI's e2e), succeeding on retry.
-          initImage:
-            resources:
-              requests:
-                cpu: 10m
-                memory: 32Mi
-              limits:
-                memory: 512Mi
+{{ include "platform.argocdValues" . | indent 8 }}
+{{- end }}
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
