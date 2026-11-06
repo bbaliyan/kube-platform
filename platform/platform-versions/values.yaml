@@ -27,10 +27,10 @@ argocdVersion: 10.12.1
 ciliumVersion: 1.20.4
 
 # renovate: datasource=github-releases depName=kubernetes-sigs/cluster-api
-capiCoreVersion: "v1.14.3"
+capiCoreVersion: "v1.14.4"
 
 # renovate: datasource=github-releases depName=ionos-cloud/cluster-api-provider-proxmox
-capmoxVersion: "v0.9.1"
+capmoxVersion: "v0.9.2"
 
 # renovate: datasource=helm depName=cluster-autoscaler registryUrl=https://kubernetes.github.io/autoscaler
 clusterAutoscalerVersion: "9.60.0"
