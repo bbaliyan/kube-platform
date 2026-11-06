@@ -236,15 +236,15 @@ Use this only if the promote workflow cannot run and `stable` must change.
 
 1. Open the repository Settings, then Rules, then Rulesets.
 2. Open the ruleset `stable`.
-3. Under Bypass list, add yourself with the mode "Always allow".
+3. Under Bypass list, add the role "Repository admin" with the mode "Always allow".
 4. Save the ruleset.
 5. Push the commit: `git push origin <sha>:stable`.
 6. Open the ruleset `stable` again.
-7. Remove yourself from the Bypass list.
+7. Remove the role "Repository admin" from the Bypass list.
 8. Save the ruleset.
 9. Verify the ruleset lists only the deploy key as a bypass actor.
 
-Warning: do not leave yourself on the Bypass list. The next promotion
+Warning: do not leave the admin role on the Bypass list. The next promotion
 record would no longer prove who moved `stable`.
 
 ## CI
