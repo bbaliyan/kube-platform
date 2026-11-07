@@ -38,6 +38,7 @@ workloadsRepoURL: ""
 workloadsRevision: ""
 workloadsPath: ""
 clusterFqdnSuffix: ""
+httpToHttpsRedirect: true        # send http:// requests on port 80 to HTTPS (needs clusterFqdnSuffix); set false when TLS ends before Traefik
 trustedCaPemB64: ""
 
 # Publishes DNSEndpoint objects a workload creates itself to Route53 — off by

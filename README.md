@@ -29,6 +29,24 @@ to already be there.
 | Scheduling priority | `platform` and `workload-critical` PriorityClasses | always |
 | GitOps | Argo CD, managing itself | always |
 
+### HTTP to HTTPS
+
+With `clusterFqdnSuffix` set, every route to a UI is HTTPS only. Traefik also
+listens on port 80, so a request to `http://argocd.<suffix>` has no route and gets
+a bare 404. The `ingress-routes` chart adds one route on the `web` entry point
+that sends any request to the same address on HTTPS (`307`, not cached by
+browsers).
+
+- It has the lowest priority. A more specific route on port 80 still wins, for
+  example a cert-manager HTTP-01 solver or a webhook that must stay on HTTP. The
+  platform's own ACME issuer uses DNS-01, so no platform certificate needs port 80.
+- Set `httpToHttpsRedirect: false` when TLS ends before Traefik. A load
+  balancer that forwards plain HTTP to port 80 would otherwise loop.
+- To make the redirect permanent (`308`), set `httpRedirect.permanent: true` in
+  the `ingress-routes` chart. Browsers then remember it.
+- An HTTP client that follows the redirect has already sent its first request in
+  clear text. Use `https://` in scripts and tools.
+
 \* `certMode: acme` uses Let's Encrypt (or any ACME CA, `acmeServer`) with
 Cloudflare DNS-01. Set `acmeEmail`, and either `acmeCloudflareTokenRef`
 (with `secretStoreType`) to fetch the Cloudflare token from the secret
