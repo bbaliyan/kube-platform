@@ -8,7 +8,7 @@ platformRevision: stable
 certMode: selfsigned
 clusterName: ""                 # raw cluster identifier — used to tag dynamically-provisioned storage
 clusterAutoscalerEnabled: false # deploy cluster-autoscaler — off by default; opt in per-cluster
-clusterAutoscalerCloudProvider: clusterapi # clusterapi: Cluster API MachineDeployments; aws: EC2 Auto Scaling groups tagged for clusterName, plus the cloud controller manager that deletes nodes of terminated instances
+clusterAutoscalerCloudProvider: aws # aws is the only provider: EC2 Auto Scaling groups tagged for clusterName, plus the cloud controller manager that deletes nodes of terminated instances
 clusterAutoscalerCoresTotal: ""  # <min>:<max> vCPUs across every node in the cluster; empty leaves the autoscaler's default
 clusterAutoscalerMemoryTotal: "" # <min>:<max> GiB across every node in the cluster; empty leaves the autoscaler's default
 platformNodeSelector: {}        # node labels every platform component is pinned to; empty leaves placement to the scheduler
@@ -28,7 +28,6 @@ extraTags: {}                    # arbitrary tags forwarded from node-aws's extr
 #                                 # from clusterName/extraTags above)
 storageProvisioners: []
 ciliumOperatorReplicas: 1       # cilium-operator replica count; 1 suits single-node (chart default is 2, needs anti-affinity room to schedule both), multi-node consumers override up
-gpuOperatorEnabled: false       # deploy NVIDIA GPU Operator — off by default; opt in per-cluster
 hubbleEnabled: false            # enable Hubble relay/UI/metrics and the matching Grafana dashboards — off by default; opt in per-cluster (see cilium-app.yaml and observability's prometheus-app.yaml)
 observabilityExtraHelmValues: {} # generic passthrough forwarded as helm.valuesObject on the observability Application, merged over platform/observability's own values.yaml (e.g. nodeExporterTolerations for a node carrying a custom taint) — set via platform_helm_values_object per-cluster
 # The workloads repo the cluster tracks, set by kube-compute only when one exists. With a repo,
@@ -38,7 +37,6 @@ observabilityExtraHelmValues: {} # generic passthrough forwarded as helm.valuesO
 workloadsRepoURL: ""
 workloadsRevision: ""
 workloadsPath: ""
-gpuOperatorHelmValues: {}       # consumer-specific values (node selector/toleration, time-slicing config, etc.) merged over this Application's own driver.enabled: true default
 clusterFqdnSuffix: ""
 trustedCaPemB64: ""
 
@@ -93,8 +91,7 @@ vaultRole: ""         # Vault Kubernetes auth role bound to ESO's service accoun
 vaultAuthMountPath: "kubernetes"   # Vault/OpenBao Kubernetes-auth mount path this cluster was registered under
 vaultSecretPath: ""   # Full KV v2 path e.g. secret/data/kube/cluster-1/repo-cred
 
-# Region the cluster runs in: cluster-autoscaler scales in it when
-# clusterAutoscalerCloudProvider is aws.
+# Region the cluster runs in: cluster-autoscaler scales in it.
 awsRegion: ""         # e.g. eu-west-1
 
 # AWS SSM backend (secretStoreType: aws-ssm)

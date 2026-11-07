@@ -66,7 +66,7 @@ class DefaultRevision(unittest.TestCase):
 
     def test_example_clusters_follow_stable(self):
         files = sorted((ROOT / "ci/clusters").glob("*.yaml"))
-        self.assertGreaterEqual(len(files), 5)
+        self.assertGreaterEqual(len(files), 4)
         for f in files:
             app = yaml.safe_load(f.read_text(encoding="utf-8"))
             for source in app["spec"]["sources"]:

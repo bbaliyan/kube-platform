@@ -51,7 +51,7 @@ the Argo CD UI add the finalizer themselves and cascade by default. Use
 `--cascade=false` with them on an opted-out Application.
 
 An opt-out also changes what happens when a consumer turns a feature off, for
-example `gpuOperatorEnabled`, a removed `storageProvisioners` entry, the cloud
+example `externalDnsEnabled`, a removed `storageProvisioners` entry, the cloud
 controller manager or the CSI driver. Before, the root pruned the Application
 and left its resources behind. Now the Application stays and keeps syncing, and
 the root shows it as "requires pruning" until someone deletes it by hand. Use
@@ -282,7 +282,7 @@ to `main` is a promotion candidate:
    healthy bring-up goes through (`GRACE` in `e2e/wait.py`). Files in
    `e2e/`.
 
-   kind can't stand in for everything: GPUs, iSCSI, Longhorn and EBS
+   kind can't stand in for everything: iSCSI, Longhorn and EBS
    storage, secret stores and the BYO CA, autoscaling and external-dns are
    only rendered and validated. The single node also has no
    `CriticalAddonsOnly` taint, and runs Debian where real nodes run
@@ -300,9 +300,7 @@ It holds:
   - `rendered`: the images in the rendered example clusters. The script does not
     grep `image:`. It also reads images that a grep misses. These are:
     arguments (the cert-manager solver, the Prometheus operator config
-    reloader), the GPU operator fields, and the image of a system-upgrade Plan
-    (`rancher/rke2-upgrade`). A GPU operator component with `enabled: false` is
-    skipped.
+    reloader) and the image of a system-upgrade Plan (`rancher/rke2-upgrade`).
   - `runtime`: the images the containers report after the kind run. A
     container whose image is only an ID (`sha256:...`, which the kubelet shows
     for an image that a digest pins) takes its name from the repository in its
@@ -332,16 +330,14 @@ It holds:
 - **notScanned**: what an image scan does not see. Each entry has a type, a
   name and a reason.
   - `grafana-plugin`: a plugin that the pod downloads at start.
-  - `unresolved-image`: an image the registry does not have under that name.
-    The GPU driver is one. The ClusterPolicy names `595.91.07`, and the
-    operator adds the OS suffix on the node.
+  - `unresolved-image`: no longer produced. The schema still accepts it so
+    that older records validate.
   - `test-only`: an image that only objects with `helm.sh/hook: test` use (the
     phases `test`, `test-success` and `test-failure`, and no other phase), and
     that no container of the kind run used. A Helm test pod runs only when
     someone runs `helm test`. Argo CD does not run it. Today this is the
-    kubetest2 image (`kubekins-e2e`) in the `ebs-csi-driver-test` pod, the
-    bats image in the Grafana test pod, and the busybox image in the
-    nvidia-gpu-exporter test pod. An image that a workload or another hook also uses stays
+    kubetest2 image (`kubekins-e2e`) in the `ebs-csi-driver-test` pod and the
+    bats image in the Grafana test pod. An image that a workload or another hook also uses stays
     in `images`.
 - **scanner**: name, version and database time. They stay `null`. The security
   gate fills them in.
@@ -768,9 +764,8 @@ consumer writes it. Between them they switch on every optional template:
 
 | File | Shape |
 |---|---|
-| `homelab-gpu.yaml` | single node, NVIDIA GPU, Hubble, two democratic-csi backends |
 | `aws.yaml` | kube-compute's `aws-cluster`: EBS, cluster-autoscaler + cloud controller manager, SSM secrets, BYO CA, external-dns, trusted internal CA |
-| `proxmox.yaml` | kube-compute's `proxmox-cluster`: Vault/OpenBao secrets and BYO CA, Cluster API autoscaling, local-path + Longhorn, extra Traefik port, Grafana plugins |
+| `proxmox.yaml` | kube-compute's `proxmox-cluster`: Vault/OpenBao secrets and BYO CA, local-path + Longhorn, extra Traefik port, Grafana plugins |
 | `azure-acme.yaml` | ACME certificates, Azure Key Vault secrets, Hubble off, no storage |
 | `kind.yaml` | what `make test-integration` deploys: self-signed certificates, Hubble, local-path |
 

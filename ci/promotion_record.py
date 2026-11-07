@@ -20,12 +20,8 @@ Images come from two places, and the record holds the union:
   rendered  every image reference in the rendered objects. It is not a grep of
             `image:`. It also reads arguments and environment values that hold
             an image (the cert-manager solver, the Prometheus operator config
-            reloader), a repository, image and version triple (the GPU
-            operator's ClusterPolicy), and the untagged image of a
-            system-upgrade Plan (rancher/rke2-upgrade). Digests come from the
-            registry. The GPU driver tag is the one in the ClusterPolicy; the
-            operator adds an OS suffix on the node, which the runtime list
-            cannot show here because kind has no GPU.
+            reloader), and the untagged image of a system-upgrade Plan
+            (rancher/rke2-upgrade). Digests come from the registry.
   runtime   the images that running containers report. A container whose image
             field is only an image ID (the kubelet shows sha256:... for an image
             that a digest pins) is named by the repository in its imageID.
@@ -41,10 +37,7 @@ archive (the same value as the index entry of a Helm repository) or the OCI
 manifest digest.
 
 notScanned lists what a container fetches at start and no image scan sees (the
-Grafana plugins), and the images that cannot be resolved because the operator
-builds the tag on the node (the GPU driver: the ClusterPolicy names 595.91.07,
-the registry only has 595.91.07-ubuntu24.04 and the like). A component of the
-ClusterPolicy with enabled: false is skipped.
+Grafana plugins).
 
 Every image has one digest, and the registry serves it. That is the digest the
 security gate scans. digestSource says how the record got it. registry: the
@@ -123,12 +116,6 @@ def has_registry(ref):
     return bool(slash) and ("." in first or ":" in first or first == "localhost")
 
 
-def compose(repository, image, version):
-    version = str(version)
-    sep = "@" if version.startswith("sha256:") else ":"
-    return f"{repository.rstrip('/')}/{image}{sep}{version}"
-
-
 def with_plan_tags(obj):
     """A system-upgrade Plan names its image without a tag and takes the tag
     from spec.version, with + written as - (v1.37.1+rke2r1 -> v1.37.1-rke2r1)."""
@@ -162,20 +149,13 @@ def image_from_text(text):
     return None
 
 
-def images_in(node, operator_policy=False):
-    """Every image reference below node. In a ClusterPolicy, a component with
-    enabled: false is skipped with everything below it."""
+def images_in(node):
+    """Every image reference below node."""
     found = set()
     if isinstance(node, dict):
-        if operator_policy and node.get("enabled") is False:
-            return found
         image = node.get("image")
-        if isinstance(image, str) and image:
-            repository, version = node.get("repository"), node.get("version")
-            if isinstance(repository, str) and version not in (None, ""):
-                found.add(compose(repository, image, version))
-            elif parse_ref(image):
-                found.add(image)
+        if isinstance(image, str) and parse_ref(image):
+            found.add(image)
         for key in ("args", "command"):
             if isinstance(node.get(key), list):
                 found |= {r for a in node[key] if isinstance(a, str) and (r := image_from_text(a))}
@@ -183,10 +163,10 @@ def images_in(node, operator_policy=False):
             if (r := image_from_text(node["value"])):
                 found.add(r)
         for v in node.values():
-            found |= images_in(v, operator_policy)
+            found |= images_in(v)
     elif isinstance(node, list):
         for v in node:
-            found |= images_in(v, operator_policy)
+            found |= images_in(v)
     return found
 
 
@@ -226,28 +206,26 @@ def is_test_hook(obj):
 
 
 def read_rendered(rendered):
-    """(rendered image references, the ones composed by an operator, Applications,
-    plugin names). The references include those of helm test objects."""
-    images, test_images, composed, apps, plugins = read_rendered_split(rendered)
-    return images | test_images, composed, apps, plugins
+    """(rendered image references, Applications, plugin names). The references
+    include those of helm test objects."""
+    images, test_images, apps, plugins = read_rendered_split(rendered)
+    return images | test_images, apps, plugins
 
 
 def read_rendered_split(rendered):
     """(image references of the other objects, image references of helm test
-    objects, the ones composed by an operator, Applications, plugin names)."""
+    objects, Applications, plugin names)."""
     from render import load_docs  # imported here: ci/stable_watch.py resolve runs without PyYAML
-    images, test_images, composed, apps, plugins = set(), set(), set(), [], set()
+    images, test_images, apps, plugins = set(), set(), [], set()
     for app_dir in sorted(p for p in Path(rendered).glob("*/*") if p.is_dir()):
         objs = [d for f in sorted(app_dir.glob("*.yaml"))
                 for d in load_docs(f.read_text(encoding="utf-8"))]
         apps += [o for o in objs if o.get("kind") == "Application"]
         for o in objs:
-            if o.get("kind") == "ClusterPolicy":
-                composed |= images_in(o, operator_policy=True)
-            elif o.get("kind") not in SKIP_KINDS:
+            if o.get("kind") not in SKIP_KINDS:
                 (test_images if is_test_hook(o) else images).update(images_in(with_plan_tags(o)))
         plugins |= plugins_in(objs)
-    return images, test_images, composed - images - test_images, apps, plugins
+    return images, test_images, apps, plugins
 
 
 def chart_requests(apps, repo_root):
@@ -389,9 +367,9 @@ def merge_entries(entries):
 
 
 def build(args):
-    images, test_images, composed, apps, plugins = read_rendered_split(args.rendered)
+    images, test_images, apps, plugins = read_rendered_split(args.rendered)
     runtime = runtime_images(args.runtime)
-    entries, soft = {}, set()
+    entries = {}
 
     def entry_key(ref):
         parsed = parse_ref(ref)
@@ -403,21 +381,18 @@ def build(args):
         return key, entries.setdefault(key, {"digest": pinned, "digestSource": "pinned" if pinned else "registry",
                                              "sources": set(), "runtimeDigests": set()})
 
-    for ref in images | composed:
+    for ref in images:
         key, entry = entry_for(ref)
         entry["sources"].add("rendered")
-        if ref in composed:
-            soft.add(key)
     for ref, digests in runtime.items():
         key, entry = entry_for(ref)
         entry["sources"].add("runtime")
         entry["runtimeDigests"] |= digests
-        soft.discard(key)
     # An image that only a helm test object names, and no container of the kind run used, is not scanned.
     test_only = sorted({entry_key(r) for r in test_images} - set(entries))
 
     charts = sorted(chart_requests(apps, args.repo_root))
-    errors, unresolved, chart_digests = [], set(), {}
+    errors, chart_digests = [], {}
     with ThreadPoolExecutor(max_workers=4) as pool:
         # A pinned digest is asked for too: the record never holds a digest the registry does not serve.
         pending_images = {ref: pool.submit(retry, lambda r=ref: registry_digest(r), ref) for ref in entries}
@@ -430,12 +405,7 @@ def build(args):
                     raise RuntimeError(f"{ref}: the registry returned {served}")
                 entries[ref]["digest"] = served
             except RuntimeError as e:
-                # An operator builds some tags on the node (the GPU driver adds the OS).
-                # A digest is never built on the node, so a pinned one must be served.
-                if ref in soft and not entries[ref]["digest"]:
-                    unresolved.add(ref)
-                else:
-                    errors.append(str(e))
+                errors.append(str(e))
         for c, fut in pending_charts.items():
             try:
                 chart_digests[c] = fut.result()
@@ -443,15 +413,10 @@ def build(args):
                 errors.append(str(e))
     if errors:
         sys.exit("cannot resolve digests:\n  " + "\n  ".join(sorted(errors)))
-    for ref in unresolved:
-        del entries[ref]
 
     not_scanned = [{"type": "grafana-plugin", "name": p,
                     "reason": "Grafana downloads the plugin when the pod starts"}
                    for p in sorted(plugins)]
-    not_scanned += [{"type": "unresolved-image", "name": ref,
-                     "reason": "the registry has no such tag; the operator builds the tag on the node"}
-                    for ref in sorted(unresolved)]
     not_scanned += [{"type": "test-only", "name": ref,
                      "reason": "only an object with helm.sh/hook: test uses it; it runs only when someone runs helm test"}
                     for ref in test_only]

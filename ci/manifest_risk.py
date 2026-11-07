@@ -286,10 +286,9 @@ def load_side(root):
         kind, where = obj["kind"], ident(obj)
         for cls, detail in facts_of(obj):
             facts.add((cluster, cls, where, detail))
-        if kind in SKIP_KINDS and kind != "ClusterPolicy":
+        if kind in SKIP_KINDS:
             continue
-        # A ClusterPolicy is the GPU operator's image list; read it the way the record does.
-        for ref in images_in(with_plan_tags(obj), operator_policy=kind == "ClusterPolicy"):
+        for ref in images_in(with_plan_tags(obj)):
             parsed = parse_ref(ref)
             if parsed:
                 repositories.setdefault((cluster, parsed[0]), set()).add(ref)

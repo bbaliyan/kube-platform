@@ -1,6 +1,6 @@
 {{- if .Values.clusterAutoscalerEnabled }}
-{{- if not (has .Values.clusterAutoscalerCloudProvider (list "aws" "clusterapi")) }}
-{{- fail "clusterAutoscalerCloudProvider must be aws or clusterapi" }}
+{{- if ne .Values.clusterAutoscalerCloudProvider "aws" }}
+{{- fail "clusterAutoscalerCloudProvider must be aws" }}
 {{- end }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -22,18 +22,7 @@ spec:
         cloudProvider: {{ .Values.clusterAutoscalerCloudProvider }}
         autoDiscovery:
           clusterName: {{ required "clusterName must be set" .Values.clusterName | quote }}
-{{- if eq .Values.clusterAutoscalerCloudProvider "aws" }}
         awsRegion: {{ required "awsRegion must be set for the aws cloud provider" .Values.awsRegion | quote }}
-{{- else }}
-        clusterAPIMode: incluster-incluster
-        clusterAPICloudConfigPath: ""
-        # Scaling a group from zero reads its infrastructure machine template.
-        rbac:
-          additionalRules:
-            - apiGroups: [infrastructure.cluster.x-k8s.io]
-              resources: ["*"]
-              verbs: [get, list, watch]
-{{- end }}
         extraArgs:
           expander: least-waste
           # The chart defaults to 4, which logs every step of the loop it runs

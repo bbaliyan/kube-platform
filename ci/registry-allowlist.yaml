@@ -36,10 +36,6 @@
   reason: Organisations of the democratic-csi, Dex, External Secrets and Headlamp projects.
 - registry: registry.k8s.io
   reason: The registry of the Kubernetes project. Only the project can push to it.
-- registry: nvcr.io
-  repositories:
-    - nvidia/
-  reason: NVIDIA's registry, for the GPU operator and its components.
 - registry: public.ecr.aws
   repositories:
     - csi-components/

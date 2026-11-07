@@ -1,0 +1,11 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pinned
+  namespace: default
+spec:
+  template:
+    spec:
+      containers:
+        - name: pinned
+          image: registry.example.test/tools/pinned@sha256:1111111111111111111111111111111111111111111111111111111111111111

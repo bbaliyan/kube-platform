@@ -26,12 +26,6 @@ argocdVersion: 10.14.0
 # renovate: datasource=helm depName=cilium registryUrl=https://helm.cilium.io/
 ciliumVersion: 1.20.4
 
-# renovate: datasource=github-releases depName=kubernetes-sigs/cluster-api
-capiCoreVersion: "v1.14.3"
-
-# renovate: datasource=github-releases depName=ionos-cloud/cluster-api-provider-proxmox
-capmoxVersion: "v0.9.1"
-
 # renovate: datasource=helm depName=cluster-autoscaler registryUrl=https://kubernetes.github.io/autoscaler
 clusterAutoscalerVersion: "9.60.0"
 
@@ -40,9 +34,3 @@ awsCloudControllerManagerVersion: "0.0.12"
 
 # renovate: datasource=docker depName=registry.k8s.io/provider-aws/cloud-controller-manager
 awsCloudControllerManagerImageTag: "v1.37.0"
-
-# renovate: datasource=helm depName=gpu-operator registryUrl=https://helm.ngc.nvidia.com/nvidia
-gpuOperatorVersion: "v26.7.2"
-
-# renovate: datasource=helm depName=nvidia-gpu-exporter registryUrl=https://utkuozdemir.github.io/nvidia_gpu_exporter
-nvidiaGpuExporterVersion: "2.17.0"

@@ -1,7 +1,7 @@
 # The cluster the integration tier builds in kind and syncs for real (see
 # ci/e2e/): a single node with self-signed certificates, Hubble and
-# local-path storage, so everything it runs works without a cloud, a NAS or
-# a GPU. Like every example it follows `stable`. The integration tier does
+# local-path storage, so everything it runs works without a cloud or a NAS.
+# Like every example it follows `stable`. The integration tier does
 # not apply this file as it is: ci/e2e/point-at-commit.py sets both sources
 # and platformRevision to the commit under test.
 apiVersion: argoproj.io/v1alpha1
@@ -31,10 +31,6 @@ spec:
             value: kind.test
           - name: trustedCaPemB64
             value: ""
-          # CAPMOX v0.9 documents Cluster API v1.11 and v1.12 only, and
-          # platform-versions pins v1.14, so the autoscaler stays off here.
-          - name: clusterAutoscalerEnabled
-            value: "false"
         valuesObject:
           ciliumOperatorReplicas: 1
           hubbleEnabled: true
