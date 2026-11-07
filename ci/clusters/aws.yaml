@@ -1,7 +1,8 @@
 # An autoscaled AWS cluster as kube-compute's aws-cluster module renders it
 # (node-bootstrap's platform_app_yaml): EBS storage, cluster-autoscaler and
 # the cloud controller manager, repo credentials and a BYO CA from SSM,
-# external-dns, and an internal CA that Argo CD trusts for its git server.
+# external-dns, an internal CA that Argo CD trusts for its git server, and the
+# instance metadata guard.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -71,6 +72,8 @@ spec:
           storageProvisioners:
             - name: ebs
               type: aws-ebs
+          imdsGuard:
+            enabled: true
     - repoURL: https://github.com/bbaliyan/kube-platform.git
       targetRevision: stable
       ref: values

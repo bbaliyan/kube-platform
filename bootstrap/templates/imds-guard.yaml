@@ -1,0 +1,34 @@
+{{- with .Values.imdsGuard }}
+{{- if .enabled }}
+{{- if not $.Values.awsRegion }}
+{{- fail "imdsGuard is for AWS clusters: set awsRegion" }}
+{{- end }}
+{{/*
+egressDeny alone would put every selected pod into default-deny egress, because
+enableDefaultDeny defaults to true for a direction that has rules. Turning it off
+keeps all other traffic as it was. Pods on the host network are not Cilium
+endpoints, so they are never selected and keep their access.
+*/}}
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: imds-guard
+spec:
+  description: Blocks the EC2 instance metadata service for pods outside imdsGuard.allowedNamespaces.
+  endpointSelector:
+    {{- if .allowedNamespaces }}
+    matchExpressions:
+      - key: io.kubernetes.pod.namespace
+        operator: NotIn
+        values:
+          {{- toYaml .allowedNamespaces | nindent 10 }}
+    {{- else }} {}
+    {{- end }}
+  enableDefaultDeny:
+    egress: false
+    ingress: false
+  egressDeny:
+    - toCIDR:
+        - 169.254.169.254/32
+{{- end }}
+{{- end }}
