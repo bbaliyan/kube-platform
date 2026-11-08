@@ -96,11 +96,15 @@ $(CLUSTERS:%=schemas/%): schemas/%: render/%
 # Renders the kind cluster once more, with the preset on, and compares its
 # regexes with the used metric names. It reads only the kind cluster of out/head.
 # node-exporter is a node-level agent: its DaemonSet must tolerate every taint
-# in every cluster, or tainted nodes have no node metrics.
+# in every cluster, or tainted nodes have no node metrics. It also runs in the
+# confined SELinux domain, except in the clusters listed in
+# NODE_EXPORTER_SELINUX_OFF, whose nodes lack the module.
+NODE_EXPORTER_SELINUX_OFF = kind
 node-exporter: $(CLUSTERS:%=node-exporter/%)
 
 $(CLUSTERS:%=node-exporter/%): node-exporter/%: render/%
 	grep -A1 '^ *tolerations:' out/head/$*/prometheus/DaemonSet_apps_prometheus_prometheus-prometheus-node-exporter.yaml | grep -q 'operator: Exists'
+	$(if $(filter $*,$(NODE_EXPORTER_SELINUX_OFF)), 		! grep -q 'seLinuxOptions' out/head/$*/prometheus/DaemonSet_apps_prometheus_prometheus-prometheus-node-exporter.yaml, 		grep -A1 'seLinuxOptions:' out/head/$*/prometheus/DaemonSet_apps_prometheus_prometheus-prometheus-node-exporter.yaml | grep -q 'type: node_exporter.process')
 
 dropped-metrics: render/kind
 	tests/check-dropped-metrics.py out/head

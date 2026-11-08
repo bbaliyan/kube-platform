@@ -109,6 +109,7 @@
     "issuerName": {},
     "grafanaPlugins": {},
     "nodeExporterTolerations": {},
+    "nodeExporterSelinuxType": {},
     "alertmanagerConfigMatcherStrategy": {},
     "grafanaIni": {},
     "grafanaEnvFromSecrets": {},
