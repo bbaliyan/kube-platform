@@ -98,15 +98,17 @@ $(CLUSTERS:%=schemas/%): schemas/%: render/%
 dropped-metrics: render/kind
 	tests/check-dropped-metrics.py out/head
 
-# The Argo CD bootstrap manifest and its sha256, which the argocd-bootstrap
-# workflow publishes. It is the Argo CD chart at the version of
+# The Argo CD bootstrap manifest and its sha256, which the promote workflow
+# attaches to its release. It is the Argo CD chart at the version of
 # platform-versions, rendered with bootstrap/argocd-values.yaml, the same file
 # the argocd Application of the bootstrap chart builds on. Rendering it in every
 # run proves that the settings still produce a manifest that Kubernetes accepts,
 # and that the render is stable.
-ARGOCD_VERSION = $(shell sed -n 's/^argocdVersion: *"\{0,1\}\([^" #]*\).*/\1/p' platform/platform-versions/values.yaml)
+PLATFORM_VERSIONS ?= platform/platform-versions/values.yaml
+ARGOCD_VALUES ?= bootstrap/argocd-values.yaml
+ARGOCD_VERSION = $(shell sed -n 's/^argocdVersion: *"\{0,1\}\([^" #]*\).*/\1/p' $(PLATFORM_VERSIONS))
 ARGOCD_RENDER = helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm \
-	--version $(ARGOCD_VERSION) --namespace argocd --include-crds --values bootstrap/argocd-values.yaml
+	--version $(ARGOCD_VERSION) --namespace argocd --include-crds --values $(ARGOCD_VALUES)
 
 .PHONY: argocd-bootstrap
 argocd-bootstrap: | clean-out

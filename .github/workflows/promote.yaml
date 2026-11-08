@@ -270,6 +270,21 @@ jobs:
           SCANNED_DIGEST: ${{ needs.choose.outputs.scanned_digest }}
           RISK_DIGEST: ${{ needs.choose.outputs.risk_digest }}
         run: ci/promote-prepare.sh inputs
+      # Renders the bootstrap manifest from the candidate's two data files with
+      # the trusted Makefile. No candidate code runs. A render failure stops the
+      # run before anything moves.
+      - name: Build the bootstrap manifest
+        run: |
+          mkdir -p candidate-data/platform/platform-versions candidate-data/bootstrap
+          git show "$CANDIDATE:platform/platform-versions/values.yaml" > candidate-data/platform/platform-versions/values.yaml
+          git show "$CANDIDATE:bootstrap/argocd-values.yaml" > candidate-data/bootstrap/argocd-values.yaml
+          for attempt in 1 2 3; do
+            make argocd-bootstrap PLATFORM_VERSIONS=candidate-data/platform/platform-versions/values.yaml \
+              ARGOCD_VALUES=candidate-data/bootstrap/argocd-values.yaml && break
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 20
+          done
+          cp out/argocd-bootstrap/argocd-bootstrap.yaml out/argocd-bootstrap/argocd-bootstrap.yaml.sha256 release/
       - name: Say what a real run would do
         env:
           CANDIDATE: ${{ needs.choose.outputs.sha }}
@@ -330,6 +345,21 @@ jobs:
           SCANNED_DIGEST: ${{ needs.choose.outputs.scanned_digest }}
           RISK_DIGEST: ${{ needs.choose.outputs.risk_digest }}
         run: ci/promote-prepare.sh inputs
+      # Renders the bootstrap manifest from the candidate's two data files with
+      # the trusted Makefile. No candidate code runs. A render failure stops the
+      # run before anything moves.
+      - name: Build the bootstrap manifest
+        run: |
+          mkdir -p candidate-data/platform/platform-versions candidate-data/bootstrap
+          git show "$CANDIDATE:platform/platform-versions/values.yaml" > candidate-data/platform/platform-versions/values.yaml
+          git show "$CANDIDATE:bootstrap/argocd-values.yaml" > candidate-data/bootstrap/argocd-values.yaml
+          for attempt in 1 2 3; do
+            make argocd-bootstrap PLATFORM_VERSIONS=candidate-data/platform/platform-versions/values.yaml \
+              ARGOCD_VALUES=candidate-data/bootstrap/argocd-values.yaml && break
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 20
+          done
+          cp out/argocd-bootstrap/argocd-bootstrap.yaml out/argocd-bootstrap/argocd-bootstrap.yaml.sha256 release/
       # Release immutability is a repository setting. Without it a published
       # release can change. Read the setting; if the token cannot read it,
       # require the owner's repository variable, which the owner sets after
@@ -366,7 +396,8 @@ jobs:
           TAG: ${{ steps.prepare.outputs.tag }}
         run: |
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" \
-            --notes-file release/notes.md release/promotion-record.json release/manifest-risk.json release/manifest-risk.md
+            --notes-file release/notes.md release/promotion-record.json release/manifest-risk.json release/manifest-risk.md \
+            release/argocd-bootstrap.yaml release/argocd-bootstrap.yaml.sha256
       - id: push
         run: git push "git@github.com:$GITHUB_REPOSITORY.git" "$CANDIDATE:refs/heads/stable"
       - id: publish
