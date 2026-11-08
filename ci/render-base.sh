@@ -27,7 +27,18 @@ cp -r ci "$tree/src/ci"
 if python3 ci/render.py "$tree/src" out/base.tmp; then
   mv out/base.tmp out/base
 else
-  echo "render-base: the base commit does not render; continuing without a comparison."
-  rm -rf out/base.tmp
+  # A new harness file can set a value that the base chart does not know yet, for
+  # example a cluster file that sets a value this change adds. The base then fails
+  # on its schema. Retry with the base's own ci/, which always rendered that base.
+  # The diff can then show harness changes along with chart changes.
+  echo "render-base: the base does not render with this branch's ci/; retrying with its own."
+  rm -rf out/base.tmp "$tree/src/ci"
+  git -C "$tree/src" checkout -q "$base" -- ci
+  if python3 ci/render.py "$tree/src" out/base.tmp; then
+    mv out/base.tmp out/base
+  else
+    echo "render-base: the base commit does not render; continuing without a comparison."
+    rm -rf out/base.tmp
+  fi
 fi
 exit 0
