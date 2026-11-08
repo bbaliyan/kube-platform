@@ -42,7 +42,7 @@ MIN_NAMES = 300
 def load_dir(path):
     objects = []
     for f in sorted(Path(path).rglob("*.yaml")):
-        objects.append(yaml.safe_load(f.read_text(encoding="utf-8")))
+        objects.append(yaml.load(f.read_text(encoding="utf-8"), Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)))
     return objects
 
 

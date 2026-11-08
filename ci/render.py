@@ -12,7 +12,12 @@ post in a PR comment.
 
 Output is one file per Kubernetes object: <out>/<cluster>/<app>/<object>.yaml
 
-    python ci/render.py <repo-root> <out-dir>
+    python ci/render.py <repo-root> <out-dir> [<cluster> ...]
+
+Given cluster names (file stems in ci/clusters/), it renders only those and
+replaces only their directories in <out-dir>, so one run per cluster can
+share <out-dir>. Each run keeps its Helm repositories and cache in a work
+directory of its own.
 """
 
 import json
@@ -56,7 +61,9 @@ def kube_version(root):
     return values["k8sVersion"].lstrip("v").split("+")[0]
 
 
-class Loader(yaml.SafeLoader):
+# libyaml's parser and emitter, where PyYAML has them: in pure Python, reading
+# and writing the rendered objects takes longer than Helm does.
+class Loader(getattr(yaml, "CSafeLoader", yaml.SafeLoader)):
     """SafeLoader that reads a bare `=` (an enum value in the Prometheus
     operator CRDs) as the string it is, not YAML 1.1's obsolete value tag."""
 
@@ -133,7 +140,7 @@ class Renderer:
         self.kube_version = kube_version
         self.charts = {}
         self.git_cache = {}
-        self.built = set()
+        self.built = {}
 
     def tmpfile(self, stem):
         return self.work / f"{stem}-{len(os.listdir(self.work))}.yaml"
@@ -168,18 +175,25 @@ class Renderer:
         return self.charts[key]
 
     def build_deps(self, d):
+        """Returns the chart to render: d, or for a chart with dependencies a
+        copy of d with them built, so a run never writes to the checkout that
+        another run may be reading."""
         deps = (yaml.safe_load((d / "Chart.yaml").read_text(encoding="utf-8")) or {}).get("dependencies") or []
-        if not deps or d in self.built:
-            return
-        # Argo CD registers dependency repos itself; a fresh helm doesn't.
-        for dep in deps:
-            repo = dep.get("repository", "")
-            if repo.startswith(("http://", "https://")):
-                run(["helm", "repo", "add", "--force-update", slug(repo.split("://", 1)[1]), repo])
-        # Like Argo CD, resolve from Chart.yaml rather than a stale local lock.
-        (d / "Chart.lock").unlink(missing_ok=True)
-        run(["helm", "dependency", "build", "--skip-refresh", str(d)])
-        self.built.add(d)
+        if not deps:
+            return d
+        if d not in self.built:
+            built = self.work / "local" / slug(str(d))
+            shutil.copytree(d, built)
+            # Argo CD registers dependency repos itself; a fresh helm doesn't.
+            for dep in deps:
+                repo = dep.get("repository", "")
+                if repo.startswith(("http://", "https://")):
+                    run(["helm", "repo", "add", "--force-update", slug(repo.split("://", 1)[1]), repo])
+            # Like Argo CD, resolve from Chart.yaml rather than a stale local lock.
+            (built / "Chart.lock").unlink(missing_ok=True)
+            run(["helm", "dependency", "build", "--skip-refresh", str(built)])
+            self.built[d] = built
+        return self.built[d]
 
     def helm_template(self, app, src, chart_dir, refs, apis):
         helm = src.get("helm", {})
@@ -228,8 +242,7 @@ class Renderer:
             return self.helm_template(app, src, d, refs, apis)
         d = self.repo_dir(src["repoURL"], src.get("targetRevision")) / src.get("path", ".")
         if (d / "Chart.yaml").exists():
-            self.build_deps(d)
-            return self.helm_template(app, src, d, refs, apis)
+            return self.helm_template(app, src, self.build_deps(d), refs, apis)
         # A plain directory, non-recursive: Argo CD's default.
         docs = []
         for f in sorted(p for p in d.iterdir() if p.suffix in (".yaml", ".yml", ".json")):
@@ -247,7 +260,7 @@ class Renderer:
         return docs
 
 
-class Dumper(yaml.SafeDumper):
+class Dumper(getattr(yaml, "CSafeDumper", yaml.SafeDumper)):
     """Writes multi-line strings (inline Helm values, scripts, dashboards) as
     | blocks, so their diffs read line by line. Trailing spaces, which block
     style can't hold, are dropped: the output is for review and validation,
@@ -340,15 +353,26 @@ def render_cluster(r, root, f, out, builtins):
 
 
 def main():
-    root, out = Path(sys.argv[1]), Path(sys.argv[2])
-    shutil.rmtree(out, ignore_errors=True)
-    out.mkdir(parents=True)
+    root, out, names = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3:]
+    files = sorted((root / CLUSTERS_DIR).glob("*.y*ml"))
+    if names:
+        unknown = set(names) - {f.stem for f in files}
+        if unknown:
+            sys.exit(f"no such cluster in {CLUSTERS_DIR}: {', '.join(sorted(unknown))}")
+        files = [f for f in files if f.stem in names]
+        for f in files:
+            shutil.rmtree(out / f.stem, ignore_errors=True)
+    else:
+        shutil.rmtree(out, ignore_errors=True)
+    out.mkdir(parents=True, exist_ok=True)
     version = kube_version(root)
     builtins = builtin_apis(version)
     failures = []
     with tempfile.TemporaryDirectory() as work:
+        os.environ["HELM_CACHE_HOME"] = f"{work}/helm-cache"
+        os.environ["HELM_REPOSITORY_CONFIG"] = f"{work}/helm-repositories.yaml"
         r = Renderer(root, work, version)
-        for f in sorted((root / CLUSTERS_DIR).glob("*.y*ml")):
+        for f in files:
             failures += render_cluster(r, root, f, out / f.stem, builtins)
     if failures:
         sys.exit(f"{len(failures)} Application(s) failed to render: {', '.join(failures)}")
