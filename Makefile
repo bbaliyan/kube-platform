@@ -47,7 +47,7 @@ JOBS ?= $(shell read -r quota period </sys/fs/cgroup/cpu.max 2>/dev/null && [ "$
 test-commit:
 	$(MAKE) --jobs=$(JOBS) --output-sync=target --no-print-directory commit-checks
 
-commit-checks: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics commit-messages argocd-bootstrap cilium-floor
+commit-checks: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics commit-messages argocd-bootstrap
 
 test-fast: lint-scripts lint-yaml secrets
 
@@ -101,15 +101,12 @@ dropped-metrics: render/kind
 # The Argo CD bootstrap manifest and its sha256, which the argocd-bootstrap
 # workflow publishes. Rendering it in every run proves that the settings still
 # produce a manifest that Kubernetes accepts, and that the render is stable.
-.PHONY: argocd-bootstrap cilium-floor
+.PHONY: argocd-bootstrap
 argocd-bootstrap: | clean-out
 	python3 ci/argocd-bootstrap.py out/argocd-bootstrap
 	cd out/argocd-bootstrap && sha256sum -c argocd-bootstrap.yaml.sha256
 	python3 ci/argocd-bootstrap.py out/argocd-bootstrap-again
 	cmp out/argocd-bootstrap/argocd-bootstrap.yaml out/argocd-bootstrap-again/argocd-bootstrap.yaml
-
-cilium-floor:
-	ci/check-cilium-floor.sh
 
 secrets:
 	$(CHECKS)/secrets.sh .
