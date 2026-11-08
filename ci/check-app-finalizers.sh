@@ -21,7 +21,7 @@ PROTECTION = {"Prune=false", "Delete=false"}
 problems, checked = [], 0
 for directory in sys.argv[1:]:
     for path in sorted(pathlib.Path(directory).rglob("*.y*ml")):
-        for doc in yaml.safe_load_all(path.read_text()):
+        for doc in yaml.load_all(path.read_text(), Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)):
             if not isinstance(doc, dict) or doc.get("kind") != "Application":
                 continue
             checked += 1

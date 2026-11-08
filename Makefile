@@ -12,6 +12,11 @@
 #                 uses the checked-out versions
 #   RUNTIME_IMAGES_OUT  file where test-integration writes the images the
 #                 containers report; empty writes nothing
+#   JOBS          parallel jobs of test-commit (default: the CPUs it may use)
+#
+# test-commit runs its checks, the render of each cluster and the checks of
+# each rendered cluster in parallel, and prints the output of one job at a
+# time. For another target, pass -j.
 #
 # promotion-record is not part of test-commit: it needs the network, docker
 # buildx and the file that test-integration writes. Run make render, put that
@@ -26,10 +31,23 @@ CHECKS   ?= /usr/share/kube-devenv/checks
 BASE_REF ?= $(shell git rev-parse --verify --quiet origin/main)
 export REQUIRE_SIGNOFF := 0
 
-.PHONY: test-commit test-fast test-integration hooks lint-scripts lint-yaml \
-	lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics secrets commit-messages diff-comment promotion-record
+CLUSTERS     := $(basename $(notdir $(wildcard ci/clusters/*.yaml ci/clusters/*.yml)))
+TEST_SCRIPTS := tests/preload-images.sh tests/check-app-finalizers.sh tests/check-imds-guard.sh \
+	tests/check-observability-values.sh tests/check-promotion-record.py tests/check-manifest-risk.py
 
-test-commit: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics commit-messages
+# nproc ignores the CPU quota of a container (docker run --cpus), so read the
+# cgroup quota first. More jobs than CPUs only adds memory, not speed.
+JOBS ?= $(shell read -r quota period </sys/fs/cgroup/cpu.max 2>/dev/null && [ "$$quota" != max ] \
+	&& echo $$(( (quota + period - 1) / period )) || nproc)
+
+.PHONY: test-commit test-fast test-integration hooks lint-scripts lint-yaml \
+	lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics secrets commit-messages diff-comment promotion-record \
+	commit-checks clean-out $(TEST_SCRIPTS:%=run/%) $(CLUSTERS:%=render/%) $(CLUSTERS:%=app-finalizers/%) $(CLUSTERS:%=schemas/%)
+
+test-commit:
+	$(MAKE) --jobs=$(JOBS) --output-sync=target --no-print-directory commit-checks
+
+commit-checks: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics commit-messages
 
 test-fast: lint-scripts lint-yaml secrets
 
@@ -47,30 +65,37 @@ lint-pipelines:
 	$(CHECKS)/pipeline-lint.sh .
 	tests/check-gitlab-ci.sh
 
-test-scripts:
-	tests/preload-images.sh
-	tests/check-app-finalizers.sh
-	tests/check-imds-guard.sh
-	tests/check-observability-values.sh
-	tests/check-promotion-record.py
-	tests/check-manifest-risk.py
+test-scripts: $(TEST_SCRIPTS:%=run/%)
+
+$(TEST_SCRIPTS:%=run/%): run/%:
+	$*
 
 lint-renovate:
 	python3 -c "import json; json.load(open('renovate.json'))"
 
-render:
+render: $(CLUSTERS:%=render/%)
+
+clean-out:
 	rm -rf out
-	python3 ci/render.py . out/head
+
+$(CLUSTERS:%=render/%): render/%: | clean-out
+	python3 ci/render.py . out/head $*
 
 # _root holds the cluster's own root Application, which a consumer owns.
-app-finalizers: render
-	find out/head -mindepth 2 -maxdepth 2 -type d ! -name _root -print0 | xargs -0 ci/check-app-finalizers.sh
+app-finalizers: $(CLUSTERS:%=app-finalizers/%)
 
-schemas: render
-	ci/validate-schemas.sh out/head
+$(CLUSTERS:%=app-finalizers/%): app-finalizers/%: render/%
+	find out/head/$* -mindepth 1 -maxdepth 1 -type d ! -name _root -print0 | xargs -0 ci/check-app-finalizers.sh
 
-# Renders once more, with the preset on, and compares its regexes with the used metric names.
-dropped-metrics: render
+# Each cluster is validated against the CRDs that its own charts ship.
+schemas: $(CLUSTERS:%=schemas/%)
+
+$(CLUSTERS:%=schemas/%): schemas/%: render/%
+	ci/validate-schemas.sh out/head/$*
+
+# Renders the kind cluster once more, with the preset on, and compares its
+# regexes with the used metric names. It reads only the kind cluster of out/head.
+dropped-metrics: render/kind
 	tests/check-dropped-metrics.py out/head
 
 secrets:
@@ -89,7 +114,7 @@ commit-messages:
 #                    only a KEV finding blocks. Set exactly one of the two;
 #                    with neither, or both, the target fails.
 .PHONY: test-security-gate check-trivyignore kev-catalog security-gate
-test-commit: check-trivyignore
+commit-checks: check-trivyignore
 test-scripts: test-security-gate
 KEV_URL ?= https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
 BASELINE_RECORD ?=
