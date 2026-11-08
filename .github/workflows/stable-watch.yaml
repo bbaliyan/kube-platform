@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-    container: ghcr.io/bbaliyan/kube-devenv:0.13.1
+    container: ghcr.io/bbaliyan/kube-devenv:0.14.0
     outputs:
       status: ${{ steps.fetch.outputs.status }}
     steps:
@@ -120,7 +120,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-    container: ghcr.io/bbaliyan/kube-devenv:0.13.1
+    container: ghcr.io/bbaliyan/kube-devenv:0.14.0
     env:
       DOCKER_CONFIG: /tmp/docker-config
     steps:
@@ -173,7 +173,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-    container: ghcr.io/bbaliyan/kube-devenv:0.13.1
+    container: ghcr.io/bbaliyan/kube-devenv:0.14.0
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
