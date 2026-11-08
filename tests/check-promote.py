@@ -868,6 +868,7 @@ class Escaping(unittest.TestCase):
             self.assertEqual(res.returncode, 0, res.stderr)
             self.assertNotIn("<b>", res.stdout)
             self.assertNotIn("@owner", res.stdout)
+            self.assertIn("gh attestation verify argocd-bootstrap.yaml --repo o/r", res.stdout)
             self.assertIn("sha256sum -c argocd-bootstrap.yaml.sha256", res.stdout)
 
 
