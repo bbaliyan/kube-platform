@@ -13,6 +13,18 @@ docker, kind, helm, kubectl and pyyaml).
 `.github/workflows/tiers.yaml` only sets up and calls these. It runs the
 integration tier for PRs from this repo, not for fork PRs.
 
+The integration tier runs two upgrade cases at the same time:
+
+| Job | Starts from | Where |
+|---|---|---|
+| `integration` | the PR base commit | PRs |
+| `integration-stable` | the current `stable` commit | PRs |
+| Promote `integration` | the stable commit of the run | Promote |
+
+`integration-stable` reads `stable` with `git ls-remote`. If it cannot read
+`stable`, it fails with a clear message. A change that needs a file the stable
+lacks fails this job. Add the job to the ruleset to make it gate a merge.
+
 The `commit` and `integration` jobs gate a merge. They run at the same time,
 so a PR waits for the slower one, not for both. The `diff` job runs beside
 them, and `comment` runs after it. Neither gates:
