@@ -48,9 +48,9 @@ fi
 "$kind_bin" create cluster --config ci/e2e/kind-config.yaml \
   --image "kindest/node:${kind_node_version}" --wait 0s
 
-# What a node's first boot installs before Argo CD takes over: both charts
-# applied as plain manifests. With GENESIS_REF set, at that commit's versions,
-# so a version bump is tested as the upgrade it is on every cluster. kind's own
+# What a node's first boot installs before Argo CD takes over: Cilium and Argo CD
+# as plain manifests. With GENESIS_REF set, at that commit's versions, so a
+# version bump is tested as the upgrade it is on every cluster. kind's own
 # local-path provisioner goes, so the platform's is the only one.
 genesis_versions="$tmp/genesis-versions.yaml"
 if [ -n "${GENESIS_REF:-}" ]; then
@@ -69,18 +69,21 @@ kubectl delete storageclass standard
 kubectl delete clusterrole local-path-provisioner-role
 kubectl delete clusterrolebinding local-path-provisioner-bind
 kubectl delete namespace local-path-storage --wait=false
-kubectl create namespace argocd
-helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm \
-    --version "$(version argocdVersion)" \
-    --namespace argocd --include-crds -f ci/e2e/genesis-argocd.yaml > "$tmp/argocd.yaml"
-# The runner hands the images to the node, so a rate-limited registry cannot
-# fail the run. Argo CD then takes itself over at this commit's chart version,
-# so that version's images are loaded too. See ci/e2e/preload-images.sh.
-helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm \
-    --version "$(pinned platform/platform-versions/values.yaml argocdVersion)" \
-    --namespace argocd -f ci/e2e/genesis-argocd.yaml > "$tmp/argocd-head.yaml"
-cat "$tmp/argocd.yaml" "$tmp/argocd-head.yaml" | KIND="$kind_bin" ci/e2e/preload-images.sh
-kubectl apply --server-side -n argocd -f "$tmp/argocd.yaml" >/dev/null
+# Argo CD is installed as a node's first boot installs it: the manifest that
+# `make argocd-bootstrap` renders for the release, checked against its sha256 and
+# applied server-side. The Application then takes it over. The runner hands the
+# images to the node, so a rate-limited registry cannot fail the run. The images
+# of this commit's version are loaded too, because the takeover upgrades to
+# them. See ci/e2e/preload-images.sh.
+make argocd-bootstrap >/dev/null
+cp out/argocd-bootstrap/argocd-bootstrap.yaml "$tmp/argocd-head.yaml"
+if [ -n "${GENESIS_REF:-}" ]; then
+  git show "$GENESIS_REF:bootstrap/argocd-values.yaml" > "$tmp/genesis-argocd-values.yaml"
+  make argocd-bootstrap PLATFORM_VERSIONS="$genesis_versions" ARGOCD_VALUES="$tmp/genesis-argocd-values.yaml" >/dev/null
+fi
+cat out/argocd-bootstrap/argocd-bootstrap.yaml "$tmp/argocd-head.yaml" | KIND="$kind_bin" ci/e2e/preload-images.sh
+(cd out/argocd-bootstrap && sha256sum -c argocd-bootstrap.yaml.sha256)
+kubectl apply --server-side --force-conflicts -f out/argocd-bootstrap/argocd-bootstrap.yaml >/dev/null
 kubectl -n argocd rollout status deployment,statefulset --timeout=5m
 
 # Argo CD fetches the commit from GitHub itself, which serves it from the
