@@ -105,11 +105,12 @@ issuerName: platform-issuer
 # /var/lib/grafana/plugins, so restarts and re-syncs re-download nothing.
 grafanaPlugins: []
 
-# Extra tolerations for the node-exporter DaemonSet, so it still runs on a
-# node carrying a custom taint (e.g. a dedicated-workload taint) instead of
-# going dark in monitoring for exactly the node most worth watching. Empty
-# by default -- most clusters have no tainted nodes.
-nodeExporterTolerations: []
+# Tolerations for the node-exporter DaemonSet. A node-level agent must run on
+# every node, so the default tolerates every taint. Without it, tainted nodes
+# (control plane, dedicated pools) have no node metrics. A list here replaces
+# this default and the chart's own, so an empty list tolerates nothing.
+nodeExporterTolerations:
+  - operator: Exists
 
 # Which alerts an AlertmanagerConfig route can see. Empty = the operator's
 # default, OnNamespace: a route only matches alerts whose `namespace` label

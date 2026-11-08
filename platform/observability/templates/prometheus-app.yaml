@@ -308,6 +308,8 @@ spec:
               memory: 32Mi
             limits:
               memory: 128Mi
+          # A list here replaces the subchart's default tolerations, so the
+          # default value of nodeExporterTolerations tolerates every taint.
           tolerations:
 {{ .Values.nodeExporterTolerations | toYaml | indent 12 }}
 

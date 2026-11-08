@@ -6,6 +6,8 @@ image:
 intervalSeconds: 3600
 
 # Must match node-exporter's --collector.textfile.directory (relative to the host root).
+# On an SELinux host the collector also labels this directory container_ro_file_t,
+# because node-exporter runs confined and cannot read the default label.
 textfileDirectory: /var/lib/node_exporter/textfile_collector
 
 resources:

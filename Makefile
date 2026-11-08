@@ -41,13 +41,13 @@ JOBS ?= $(shell read -r quota period </sys/fs/cgroup/cpu.max 2>/dev/null && [ "$
 	&& echo $$(( (quota + period - 1) / period )) || nproc)
 
 .PHONY: test-commit test-fast test-integration hooks lint-scripts lint-yaml \
-	lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics secrets commit-messages diff-comment promotion-record \
-	commit-checks clean-out $(TEST_SCRIPTS:%=run/%) $(CLUSTERS:%=render/%) $(CLUSTERS:%=app-finalizers/%) $(CLUSTERS:%=schemas/%)
+	lint-pipelines lint-renovate test-scripts render app-finalizers schemas node-exporter dropped-metrics secrets commit-messages diff-comment promotion-record \
+	commit-checks clean-out $(TEST_SCRIPTS:%=run/%) $(CLUSTERS:%=render/%) $(CLUSTERS:%=app-finalizers/%) $(CLUSTERS:%=schemas/%) $(CLUSTERS:%=node-exporter/%)
 
 test-commit:
 	$(MAKE) --jobs=$(JOBS) --output-sync=target --no-print-directory commit-checks
 
-commit-checks: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics commit-messages argocd-bootstrap
+commit-checks: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas node-exporter dropped-metrics commit-messages argocd-bootstrap
 
 test-fast: lint-scripts lint-yaml secrets
 
@@ -95,6 +95,13 @@ $(CLUSTERS:%=schemas/%): schemas/%: render/%
 
 # Renders the kind cluster once more, with the preset on, and compares its
 # regexes with the used metric names. It reads only the kind cluster of out/head.
+# node-exporter is a node-level agent: its DaemonSet must tolerate every taint
+# in every cluster, or tainted nodes have no node metrics.
+node-exporter: $(CLUSTERS:%=node-exporter/%)
+
+$(CLUSTERS:%=node-exporter/%): node-exporter/%: render/%
+	grep -A1 '^ *tolerations:' out/head/$*/prometheus/DaemonSet_apps_prometheus_prometheus-prometheus-node-exporter.yaml | grep -q 'operator: Exists'
+
 dropped-metrics: render/kind
 	tests/check-dropped-metrics.py out/head
 
