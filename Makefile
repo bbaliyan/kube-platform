@@ -50,6 +50,7 @@ lint-pipelines:
 test-scripts:
 	tests/preload-images.sh
 	tests/check-app-finalizers.sh
+	tests/check-imds-guard.sh
 	tests/check-observability-values.sh
 	tests/check-promotion-record.py
 	tests/check-manifest-risk.py

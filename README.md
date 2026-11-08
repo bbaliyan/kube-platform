@@ -12,6 +12,7 @@ to already be there.
 |---|---|---|
 | Networking, load balancers | Cilium (kube-proxy replacement, node IPAM LB) | always |
 | Network flow visibility | Hubble | `hubbleEnabled` |
+| Keeping pods away from the EC2 metadata service | Cilium policy (see "Block the instance metadata service") | `imdsGuard.enabled`, AWS only |
 | Ingress | Traefik | always |
 | Wildcard certificate, routes to the UIs | cert-manager, Traefik | `clusterFqdnSuffix` |
 | Certificates | cert-manager and its CSI driver: self-signed, your own CA, or ACME* | always |
@@ -378,6 +379,77 @@ own. It fails if a preset regex matches one of them. A chart upgrade that
 starts to use a dropped metric fails in CI before it reaches a cluster. The
 check cannot see rules and dashboards that a cluster adds, or dashboards
 that Grafana downloads at start.
+
+## Block the instance metadata service
+
+On AWS, each node serves its user data and its node role credentials at
+`169.254.169.254`. The user data of a server node holds the cluster join token.
+Any pod that reaches that address can read both. The nodes keep the metadata
+hop limit at 3, so pods can reach the service through the pod network.
+
+`imdsGuard` adds a `CiliumClusterwideNetworkPolicy` named `imds-guard`. It
+blocks `169.254.169.254` for every pod outside `imdsGuard.allowedNamespaces`
+and changes no other traffic. It renders only when `awsRegion` is set. Pods on
+the host network are not Cilium endpoints, so the policy never blocks them. The
+cloud controller manager and Cilium itself run there.
+
+| Default allowed namespace | Uses the service for |
+|---|---|
+| `kube-system` | EBS CSI controller (credentials, region) and node (instance ID, zone) |
+| `external-secrets` | the `aws-ssm` secret store (credentials) |
+| `cluster-autoscaler` | credentials |
+| `external-dns` | credentials |
+
+Know these limits before you enable it:
+
+- A pod in an allowed namespace can still read the user data and the
+  credentials. Keep the list small, and allow only namespaces you trust.
+- The block is all or nothing. A Cilium deny rule cannot match an HTTP path, so
+  the policy cannot block `/latest/user-data` alone.
+- A blocked request gets no answer. An AWS SDK in a blocked pod waits for a
+  timeout before it tries its next credential source.
+- Setting `imdsGuard.allowedNamespaces` replaces the whole default list.
+
+### Enable the guard
+
+You need the `hubble` CLI. These steps observe the metadata traffic first, so
+the policy blocks nothing that the cluster needs.
+
+1. If `hubbleEnabled` is false on the cluster, set it to `true` and let Argo CD
+   sync.
+2. Run `kubectl -n kube-system port-forward svc/hubble-relay 4245:80` and keep
+   it running.
+3. Run `hubble observe --server localhost:4245 --follow --to-ip 169.254.169.254 --output json > imds-flows.json`.
+4. Keep the command running for at least 3 days. If the cluster runs weekly
+   jobs, keep it running for 7 days.
+5. Run `jq -r '.flow.source.namespace // "host network"' imds-flows.json | sort | uniq -c`.
+6. For each namespace in the output, decide if its pods must use the service.
+7. If a namespace must use the service, add it to `imdsGuard.allowedNamespaces`
+   with the default namespaces that the cluster runs.
+8. Set `imdsGuard.enabled: true` in the cluster's platform values. If
+   `awsRegion` is not set, set it too.
+9. Apply the values and let Argo CD sync.
+10. Run `kubectl run imds-test --rm -it --restart=Never --image=curlimages/curl -- curl -m 5 -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' http://169.254.169.254/latest/api/token`.
+11. Verify that the command times out.
+12. Verify that the ExternalSecrets are ready, a new EBS volume claim binds and
+    the autoscaler logs no AWS errors.
+13. Run `hubble observe --server localhost:4245 --verdict DROPPED --to-ip 169.254.169.254`
+    and verify that no pod that needs the service is in the output.
+
+### Roll back the guard
+
+1. Set `imdsGuard.enabled: false` in the cluster's platform values.
+2. Apply the values. Argo CD prunes the policy on its next sync.
+
+If pods fail and you cannot wait for an apply, remove the policy by hand.
+
+> **Warning:** The root `platform` Application heals itself and puts the
+> policy back. Turn off its automated sync first.
+
+1. Run `argocd app set platform --sync-policy none`.
+2. Run `kubectl delete ciliumclusterwidenetworkpolicy imds-guard`.
+3. Set `imdsGuard.enabled: false` in the cluster's platform values and apply them.
+4. Run `argocd app set platform --sync-policy automated --self-heal --auto-prune`.
 
 ## Upgrading
 
