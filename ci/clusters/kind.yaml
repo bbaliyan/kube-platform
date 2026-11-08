@@ -34,6 +34,10 @@ spec:
         valuesObject:
           ciliumOperatorReplicas: 1
           hubbleEnabled: true
+          observabilityExtraHelmValues:
+            # The kind node image has no node_exporter.process SELinux module;
+            # a type that is not loaded stops the pod from starting.
+            nodeExporterSelinuxType: ""
           storageProvisioners:
             - name: local-path
               type: local-path

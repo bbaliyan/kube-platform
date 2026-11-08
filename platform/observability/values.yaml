@@ -112,6 +112,12 @@ grafanaPlugins: []
 nodeExporterTolerations:
   - operator: Exists
 
+# The SELinux type node-exporter runs in. The node image must hold the module
+# that defines it, or the pod does not start. On a node without SELinux the
+# container runtime ignores the type. Set it to an empty string to leave the
+# type unset, for a cluster whose nodes were built without the module.
+nodeExporterSelinuxType: node_exporter.process
+
 # Which alerts an AlertmanagerConfig route can see. Empty = the operator's
 # default, OnNamespace: a route only matches alerts whose `namespace` label
 # equals the AlertmanagerConfig's own namespace (right for a cluster shared by

@@ -312,6 +312,12 @@ spec:
           # default value of nodeExporterTolerations tolerates every taint.
           tolerations:
 {{ .Values.nodeExporterTolerations | toYaml | indent 12 }}
+{{- if .Values.nodeExporterSelinuxType }}
+          # Merged with the chart's own containerSecurityContext defaults.
+          containerSecurityContext:
+            seLinuxOptions:
+              type: {{ .Values.nodeExporterSelinuxType | quote }}
+{{- end }}
 
         # RKE2 does not expose etcd's Prometheus metrics on its client port
         # (2379, mTLS-protected) — it needs etcd-expose-metrics: true set on
