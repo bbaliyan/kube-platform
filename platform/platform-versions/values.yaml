@@ -2,16 +2,17 @@
 # cluster tracking this repo's protected branch. Cluster-agnostic by design —
 # no consumer/cluster-specific values belong here.
 #
-# Two consumers read this file:
-#   - Argo CD / Helm: charts that need a version — the system-upgrade-controller
-#     Plan's k8s_version, and (via the bootstrap chart's own multi-source
-#     Application, see kube-compute's node-bootstrap platform_app_yaml)
-#     cilium-app.yaml's/argocd-app.yaml's own targetRevision — template it
-#     from these values.
-#   - Node image builds: kube-images' kube-node/packer/aws/build.sh fetches this file and bakes
-#     k8sVersion, ciliumVersion and argocdVersion into the image. A new node boots
-#     the versions of the image it was built from, so a bump reaches new nodes only
-#     with the next image build; until then the upgrade Plan brings them forward.
+# Argo CD and Helm read this file:
+#   - The system-upgrade-controller Plan takes k8sVersion from it. It is the
+#     RKE2 upgrade target for running clusters.
+#   - The cilium and argocd Applications take ciliumVersion and argocdVersion
+#     from it (through the bootstrap chart's multi-source Application, see
+#     kube-compute's node-bootstrap platform_app_yaml). So does the
+#     argocd-bootstrap manifest that a new node downloads at first boot.
+#
+# The node image does not read this file. kube-images pins its own RKE2 and
+# Cilium versions. A new node boots the RKE2 version of its image, and the
+# upgrade Plan brings it forward.
 #
 # Bumping a version here is the entire operator action for a routine RKE2/platform
 # component upgrade — no terragrunt apply required for the upgrade itself. The RKE2

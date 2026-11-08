@@ -52,6 +52,14 @@ is information only and nothing scans it.
 
 The scanner fields stay null. The security gate fills them in.
 
+Registries rate limit anonymous pulls from a shared runner address. So each
+registry host has a limit on parallel lookups, and only a transient error (a
+rate limit, a server error, a network fault) is retried, with a growing wait,
+jitter and any Retry-After. PROMOTION_RECORD_CACHE=FILE adds a cache of the
+digests that cannot change: a digest in the reference, or a full version tag
+such as v1.2.3. Only the pull request record job sets it. The promotion
+workflows never do, so a promotion always asks the registry.
+
 The command fails if a digest cannot be resolved. A record with a hole in it
 must not look complete.
 """
@@ -61,10 +69,12 @@ import copy
 import hashlib
 import json
 import os
+import random
 import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -249,21 +259,109 @@ def chart_requests(apps, repo_root):
     return charts
 
 
-def retry(fn, what, tries=5):
-    for attempt in range(tries):
+class Transient(RuntimeError):
+    """A failure that a later attempt can cure: a rate limit, a server error, a network fault."""
+
+    def __init__(self, message, retry_after=0):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+TRANSIENT = re.compile(r"\b429\b|too many requests|toomanyrequests|rate limit|\b5\d\d\b|timeout|timed out"
+                       r"|connection (reset|refused)|\bEOF\b|temporary failure|handshake|unavailable", re.I)
+RETRY_AFTER = re.compile(r"retry-after\W+(\d+)", re.I)
+MAX_WAIT = 60  # seconds for one wait; a rate limit window is often 1 minute
+WAIT_BUDGET = 170  # seconds of waiting for one reference, under 3 minutes in total
+MAX_TRIES = 8
+
+
+def retry(fn, what, sleep=time.sleep, jitter=random.random):
+    """Retry only a Transient error. The wait doubles from PROMOTION_RECORD_PAUSE
+    seconds up to MAX_WAIT, is cut by up to half at random so that parallel
+    lookups do not return together, and is never shorter than a Retry-After
+    the tool printed. Waiting stops when WAIT_BUDGET is used up."""
+    base, waited = float(os.environ.get("PROMOTION_RECORD_PAUSE", 2)), 0.0
+    for attempt in range(MAX_TRIES):
         try:
             return fn()
-        except RuntimeError as e:
-            if attempt == tries - 1:
+        except Transient as e:
+            wait = max(min(MAX_WAIT, base * 2 ** attempt) * (0.5 + 0.5 * jitter()),
+                       min(MAX_WAIT, e.retry_after) if base else 0)
+            if attempt == MAX_TRIES - 1 or waited + wait > WAIT_BUDGET:
                 raise RuntimeError(f"{what}: {e}") from e
-            # 2, 4, 8, 16 seconds: a registry that rate limits needs time, not a quick retry.
-            time.sleep(float(os.environ.get("PROMOTION_RECORD_PAUSE", 2)) * 2 ** attempt)
+            waited += wait
+            sleep(wait)
+        except RuntimeError as e:
+            raise RuntimeError(f"{what}: {e}") from e
+
+
+class HostLimits:
+    """At most N lookups at once per registry host. A public registry that
+    rate limits anonymous pulls per shared address gets 1 or 2."""
+    LIMITS = {"public.ecr.aws": 1, "ecr-public.aws.com": 1, "docker.io": 2, "mirror.gcr.io": 2}
+    DEFAULT = 4
+
+    def __init__(self):
+        self._lock, self._semaphores = threading.Lock(), {}
+
+    def slot(self, host):
+        with self._lock:
+            return self._semaphores.setdefault(host, threading.BoundedSemaphore(self.LIMITS.get(host, self.DEFAULT)))
+
+
+def host_of(url_or_ref):
+    return re.sub(r"^\w+://", "", url_or_ref).split("/")[0]
+
+
+# A full version only. 3.23, 1.29, latest, stable and main move; v1.2.3 and 1.2.3-r1 do not.
+IMMUTABLE_TAG = re.compile(r"^v?\d+\.\d+\.\d+(?:[-.+_](?!.*(?:latest|stable|main|master|nightly|dev|edge|snapshot|rolling))[\w.]+)?$",
+                           re.I)
+
+
+def immutable_image(ref):
+    parsed = parse_ref(ref)
+    return bool(parsed and (parsed[2] or (parsed[1] and IMMUTABLE_TAG.match(parsed[1]))))
+
+
+class DigestCache:
+    """Digests that cannot change, kept between runs in a JSON file. It is off
+    unless PROMOTION_RECORD_CACHE names a file, and only the pull request
+    record job sets that. A missing or corrupt file is an empty cache."""
+
+    def __init__(self, path):
+        self.path, self.entries, self.added = path, {}, {}
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8")) if path else {}
+            self.entries = {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)
+                            and re.fullmatch(DIGEST, v)}
+        except (OSError, ValueError, AttributeError):
+            pass
+
+    def get(self, key, cacheable):
+        return self.entries.get(key) if cacheable else None
+
+    def put(self, key, digest, cacheable):
+        if self.path and cacheable:
+            self.added[key] = digest
+
+    def save(self):
+        if not self.path or not self.added:
+            return
+        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        tmp = f"{self.path}.tmp"
+        Path(tmp).write_text(json.dumps({**self.entries, **self.added}, indent=1, sort_keys=True) + "\n",
+                             encoding="utf-8")
+        os.replace(tmp, self.path)
 
 
 def run(cmd):
     res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
     if res.returncode != 0:
-        raise RuntimeError(res.stderr.strip() or f"{cmd[0]} exited {res.returncode}")
+        message = res.stderr.strip() or f"{cmd[0]} exited {res.returncode}"
+        if TRANSIENT.search(message):
+            found = RETRY_AFTER.search(message)
+            raise Transient(message, int(found[1]) if found else 0)
+        raise RuntimeError(message)
     return res.stdout.strip()
 
 
@@ -286,7 +384,7 @@ def registry_digest(ref):
         try:
             out = run(["docker", "buildx", "imagetools", "inspect", source, "--format", "{{.Manifest.Digest}}"])
         except RuntimeError as e:
-            error = e
+            error = error if isinstance(error, Transient) else e  # a rate limit decides whether to retry
             continue
         if not re.fullmatch(DIGEST, out):
             raise RuntimeError(f"unexpected digest output {out!r}")
@@ -393,10 +491,23 @@ def build(args):
 
     charts = sorted(chart_requests(apps, args.repo_root))
     errors, chart_digests = [], {}
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    limits, cache = HostLimits(), DigestCache(os.environ.get("PROMOTION_RECORD_CACHE"))
+
+    def lookup(key, host, cacheable, fn, what):
+        """The cached digest, else fn() under the limit of its host. The pool is wide and the host limit is narrow."""
+        if (hit := cache.get(key, cacheable)):
+            return hit
+        with limits.slot(host):
+            digest = retry(fn, what)
+        cache.put(key, digest, cacheable)
+        return digest
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
         # A pinned digest is asked for too: the record never holds a digest the registry does not serve.
-        pending_images = {ref: pool.submit(retry, lambda r=ref: registry_digest(r), ref) for ref in entries}
-        pending_charts = {c: pool.submit(retry, lambda c=c: chart_digest(*c), f"chart {c[1]} {c[2]}")
+        pending_images = {ref: pool.submit(lookup, ref, parse_ref(ref)[0].split("/")[0], immutable_image(ref),
+                                           lambda r=ref: registry_digest(r), ref) for ref in entries}
+        pending_charts = {c: pool.submit(lookup, "chart|" + "|".join(c), host_of(c[0]), bool(IMMUTABLE_TAG.match(c[2])),
+                                         lambda c=c: chart_digest(*c), f"chart {c[1]} {c[2]}")
                           for c in charts}
         for ref, fut in pending_images.items():
             try:
@@ -411,6 +522,7 @@ def build(args):
                 chart_digests[c] = fut.result()
             except RuntimeError as e:
                 errors.append(str(e))
+    cache.save()
     if errors:
         sys.exit("cannot resolve digests:\n  " + "\n  ".join(sorted(errors)))
 
