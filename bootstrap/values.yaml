@@ -49,11 +49,12 @@ externalDnsDomainFilter: ""     # e.g. example.internal
 dnsOwnerId: ""                   # clusterName plus the region -- see external-dns-app.yaml
 traefikExtraConfig: {}          # traefikExtraConfig.ports entries are merged into traefik's ports block (web/websecure are always present)
 
-# argocd-application-controller's memory limit (see argocd-app.yaml). It caches
+# argocd-application-controller's memory limit; empty keeps the 2Gi of
+# argocd-values.yaml. It caches
 # every object in the cluster, about 500Mi for the platform tree alone, so a
 # cluster with many more objects or Applications raises this via
 # platform_extra_helm_parameters.
-argocdControllerMemoryLimit: "2Gi"
+argocdControllerMemoryLimit: ""
 
 # Merged over Argo CD's chart `configs` (cm, rbac, params, ...), e.g. an SSO
 # login via cm."oidc.config" and rbac."policy.csv". Empty by default.

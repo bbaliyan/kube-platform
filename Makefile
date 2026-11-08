@@ -99,14 +99,22 @@ dropped-metrics: render/kind
 	tests/check-dropped-metrics.py out/head
 
 # The Argo CD bootstrap manifest and its sha256, which the argocd-bootstrap
-# workflow publishes. Rendering it in every run proves that the settings still
-# produce a manifest that Kubernetes accepts, and that the render is stable.
+# workflow publishes. It is the Argo CD chart at the version of
+# platform-versions, rendered with bootstrap/argocd-values.yaml, the same file
+# the argocd Application of the bootstrap chart builds on. Rendering it in every
+# run proves that the settings still produce a manifest that Kubernetes accepts,
+# and that the render is stable.
+ARGOCD_VERSION = $(shell sed -n 's/^argocdVersion: *"\{0,1\}\([^" #]*\).*/\1/p' platform/platform-versions/values.yaml)
+ARGOCD_RENDER = helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm \
+	--version $(ARGOCD_VERSION) --namespace argocd --include-crds --values bootstrap/argocd-values.yaml
+
 .PHONY: argocd-bootstrap
 argocd-bootstrap: | clean-out
-	python3 ci/argocd-bootstrap.py out/argocd-bootstrap
-	cd out/argocd-bootstrap && sha256sum -c argocd-bootstrap.yaml.sha256
-	python3 ci/argocd-bootstrap.py out/argocd-bootstrap-again
-	cmp out/argocd-bootstrap/argocd-bootstrap.yaml out/argocd-bootstrap-again/argocd-bootstrap.yaml
+	test -n "$(ARGOCD_VERSION)"
+	mkdir -p out/argocd-bootstrap
+	{ printf 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: argocd\n---\n'; $(ARGOCD_RENDER); } > out/argocd-bootstrap/argocd-bootstrap.yaml
+	{ printf 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: argocd\n---\n'; $(ARGOCD_RENDER); } | cmp - out/argocd-bootstrap/argocd-bootstrap.yaml
+	cd out/argocd-bootstrap && sha256sum argocd-bootstrap.yaml > argocd-bootstrap.yaml.sha256 && sha256sum -c argocd-bootstrap.yaml.sha256
 
 secrets:
 	$(CHECKS)/secrets.sh .
