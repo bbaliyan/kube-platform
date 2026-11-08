@@ -1,0 +1,33 @@
+# Publishes the Argo CD bootstrap manifest and its sha256 as the assets of a
+# release. Push a tag named argocd-bootstrap-v<N> to start it. The manifest is
+# rendered from the files at that tag.
+name: Argo CD bootstrap
+
+on:
+  push:
+    tags: ['argocd-bootstrap-v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: ghcr.io/bbaliyan/kube-devenv:0.13.1
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: make argocd-bootstrap cilium-floor
+      - env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" \
+            --notes "Argo CD bootstrap manifest. Verify it with sha256sum -c argocd-bootstrap.yaml.sha256." \
+            out/argocd-bootstrap/argocd-bootstrap.yaml out/argocd-bootstrap/argocd-bootstrap.yaml.sha256
