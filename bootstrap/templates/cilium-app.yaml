@@ -12,8 +12,8 @@ spec:
   source:
     repoURL: https://helm.cilium.io/
     chart: cilium
-    # Genesis (node-bootstrap's rendered cloud-init) installs a pinned
-    # version of this same chart directly via `helm template` (never RKE2's
+    # Genesis (the node image's baked manifest, applied at first boot) installs
+    # a pinned version of this same chart rendered by `helm template` (never RKE2's
     # own rke2-cilium HelmChart CRD) so this Application can
     # adopt the already-running resources cleanly via ServerSideApply below,
     # with no uninstall/reinstall and no dataplane disruption. From here on,

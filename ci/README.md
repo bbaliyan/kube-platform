@@ -271,8 +271,10 @@ to `main` is a promotion candidate:
 3. `make diff-comment` shows what changes against `main`, per cluster, as a
    PR comment (`diff_comment.py`, `render-base.sh`, `post-comment.sh`). The
    full render is the workflow's `rendered-manifests` artifact.
-4. `make test-integration` deploys it for real: a kind cluster, Cilium and Argo CD
-   installed the way a node's genesis installs them (at the versions of the
+4. `make test-integration` deploys it for real: a kind cluster, Cilium installed
+   as a node's genesis installs it and Argo CD installed from the manifest
+   `make argocd-bootstrap` renders, checked against its sha256 and applied
+   server-side as a node's first boot does (both at the versions of the
    base commit: the PR's base, or `stable` in the promote workflow, so a bump
    is tested as an upgrade), then the `kind.yaml` example cluster
    pointed at the commit under test. It passes once every Application is
