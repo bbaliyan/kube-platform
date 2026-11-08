@@ -47,7 +47,7 @@ JOBS ?= $(shell read -r quota period </sys/fs/cgroup/cpu.max 2>/dev/null && [ "$
 test-commit:
 	$(MAKE) --jobs=$(JOBS) --output-sync=target --no-print-directory commit-checks
 
-commit-checks: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics commit-messages
+commit-checks: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas dropped-metrics commit-messages argocd-bootstrap
 
 test-fast: lint-scripts lint-yaml secrets
 
@@ -97,6 +97,26 @@ $(CLUSTERS:%=schemas/%): schemas/%: render/%
 # regexes with the used metric names. It reads only the kind cluster of out/head.
 dropped-metrics: render/kind
 	tests/check-dropped-metrics.py out/head
+
+# The Argo CD bootstrap manifest and its sha256, which the promote workflow
+# attaches to its release. It is the Argo CD chart at the version of
+# platform-versions, rendered with bootstrap/argocd-values.yaml, the same file
+# the argocd Application of the bootstrap chart builds on. Rendering it in every
+# run proves that the settings still produce a manifest that Kubernetes accepts,
+# and that the render is stable.
+PLATFORM_VERSIONS ?= platform/platform-versions/values.yaml
+ARGOCD_VALUES ?= bootstrap/argocd-values.yaml
+ARGOCD_VERSION = $(shell sed -n 's/^argocdVersion: *"\{0,1\}\([^" #]*\).*/\1/p' $(PLATFORM_VERSIONS))
+ARGOCD_RENDER = helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm \
+	--version $(ARGOCD_VERSION) --namespace argocd --include-crds --values $(ARGOCD_VALUES)
+
+.PHONY: argocd-bootstrap
+argocd-bootstrap: | clean-out
+	test -n "$(ARGOCD_VERSION)"
+	mkdir -p out/argocd-bootstrap
+	{ printf 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: argocd\n---\n'; $(ARGOCD_RENDER); } > out/argocd-bootstrap/argocd-bootstrap.yaml
+	{ printf 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: argocd\n---\n'; $(ARGOCD_RENDER); } | cmp - out/argocd-bootstrap/argocd-bootstrap.yaml
+	cd out/argocd-bootstrap && sha256sum argocd-bootstrap.yaml > argocd-bootstrap.yaml.sha256 && sha256sum -c argocd-bootstrap.yaml.sha256
 
 secrets:
 	$(CHECKS)/secrets.sh .

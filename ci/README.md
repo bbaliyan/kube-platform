@@ -202,10 +202,14 @@ choose Review deployments and approve.
   number) hold the scan summary and the full manifest-risk files.
 - A promoted run publishes release `stable-YYYYMMDD`. A second promotion on the
   same day gets the suffix `-2`, and so on. The release holds
-  `promotion-record.json` (the scanned record), `manifest-risk.json` and
-  `manifest-risk.md`. The release text carries the manifest-risk diff.
-- Verify a record with
-  `gh attestation verify promotion-record.json --repo <owner>/<repo>`.
+  `promotion-record.json` (the scanned record), `manifest-risk.json`,
+  `manifest-risk.md`, and the Argo CD bootstrap manifest `argocd-bootstrap.yaml`
+  with its `argocd-bootstrap.yaml.sha256`. The manifest is rendered from the
+  candidate's files with `make argocd-bootstrap`. A failed render stops the run
+  before `stable` moves. The release text carries the manifest-risk diff.
+- The attestation covers `promotion-record.json` and `argocd-bootstrap.yaml`.
+  Verify a file with
+  `gh attestation verify <file> --repo <owner>/<repo>`.
   The next run does this itself with the record of the current `stable`, and
   also requires the source ref `refs/heads/main` and the GitHub Actions token
   issuer. It stops if the record does not match the commit of `stable`.

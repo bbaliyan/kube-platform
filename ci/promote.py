@@ -581,7 +581,13 @@ def cmd_notes(args):
               f"- scanner: {record['scanner']['name']} {record['scanner']['version']}, database "
               f"{record['scanner']['databaseUpdatedAt']}", "",
               "Verify the record:", "", "    gh attestation verify promotion-record.json "
-              f"--repo {args.repo}", "", "## Manifest-risk diff", "",
+              f"--repo {args.repo}", "",
+              "Bootstrap Argo CD. In the download directory, verify the manifest, then apply it:", "",
+              "    gh attestation verify argocd-bootstrap.yaml "
+              f"--repo {args.repo}",
+              "    sha256sum -c argocd-bootstrap.yaml.sha256",
+              "    kubectl apply --server-side --force-conflicts -f argocd-bootstrap.yaml", "",
+              "## Manifest-risk diff", "",
               cut(Path(args.risk_md).read_text(encoding="utf-8"), NOTES_LIMIT)]
     print("\n".join(lines))
     return 0
