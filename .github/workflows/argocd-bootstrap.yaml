@@ -23,11 +23,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Require a tag on main
+        run: git merge-base --is-ancestor HEAD origin/main || { echo "The tag is not on main." >&2; exit 1; }
       - run: make argocd-bootstrap
       - env:
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" \
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" \
             --notes "Argo CD bootstrap manifest. Verify it with sha256sum -c argocd-bootstrap.yaml.sha256." \
             out/argocd-bootstrap/argocd-bootstrap.yaml out/argocd-bootstrap/argocd-bootstrap.yaml.sha256
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          [ "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .immutable)" = true ]             || { echo "The release is not immutable. Turn on release immutability in the repository settings." >&2; exit 1; }

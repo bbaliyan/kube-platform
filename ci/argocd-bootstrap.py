@@ -44,7 +44,7 @@ def render():
     if source is None:
         sys.exit("argocd-bootstrap: the argocd Application has no single source; this script reads spec.source")
     with tempfile.NamedTemporaryFile("w", suffix=".yaml") as values:
-        values.write(source["helm"]["values"])
+        values.write(source.get("helm", {}).get("values") or sys.exit("argocd-bootstrap: the argocd Application has no helm values"))
         values.flush()
         chart = helm("template", "argocd", source["chart"], "--repo", source["repoURL"],
                      "--version", source["targetRevision"], "--namespace", NAMESPACE,
