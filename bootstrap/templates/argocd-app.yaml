@@ -40,30 +40,6 @@ spec:
     # performing the sync alive until its replacement is Ready. targetRevision
     # is templated from that single source of truth, not edited here.
     targetRevision: {{ .Values.argocdVersion | quote }}
-      helm:
-        {{- include "platform.workloadsValueFile" "argocd" | nindent 8 }}
-        values: |
-{{ include "platform.argocdValues" . | indent 10 }}
-    - {{ include "platform.workloadsSource" . | indent 6 | trim }}
-{{- else }}
-  source:
-    repoURL: https://argoproj.github.io/argo-helm
-    chart: argo-cd
-    # Self-management: Argo CD reconciling its own installation. Genesis
-    # (node-bootstrap's rendered cloud-init) installs *a* working pinned
-    # version of this same chart via `helm template` (never RKE2's HelmChart
-    # CRD) purely to get a running Argo CD; it does not need to match this
-    # targetRevision. From here on, bumping
-    # platform/platform-versions/values.yaml's argocdVersion is how you
-    # upgrade Argo CD itself — an ordinary in-place Helm upgrade, not a risky
-    # swap, so no adoption subtlety beyond ServerSideApply below. A rolling
-    # update keeps the controller performing the sync alive until its
-    # replacement is Ready, the same as any other self-managed Argo CD
-    # install. targetRevision is templated from that single source of truth
-    # (via the bootstrap chart's own multi-source Application, see
-    # kube-compute's node-bootstrap platform_app_yaml), not edited here
-    # directly.
-    targetRevision: {{ .Values.argocdVersion | quote }}
     helm:
       values: |
 {{ include "platform.argocdValues" . | indent 8 }}
@@ -76,8 +52,8 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-      # No CreateNamespace=true — genesis already created the argocd
-      # namespace. ServerSideApply is what lets this Application adopt
-      # genesis's already-running resources (no prior Argo CD tracking on
+      # No CreateNamespace=true — the bootstrap manifest already created the
+      # argocd namespace. ServerSideApply is what lets this Application adopt
+      # the resources that manifest applied (no prior Argo CD tracking on
       # them) without deleting and recreating anything.
       - ServerSideApply=true
