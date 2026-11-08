@@ -16,7 +16,11 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
+import types
+import time
 import unittest
+import unittest.mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -80,11 +84,12 @@ class Record(unittest.TestCase):
         cls.tmp.cleanup()
 
     @classmethod
-    def run_builder(cls, digests, runtime="runtime-images.json", out="record.json", missing=None):
+    def run_builder(cls, digests, runtime="runtime-images.json", out="record.json", missing=None, extra_env=None):
         env = dict(os.environ, PATH=f"{FIXTURES / 'bin'}{os.pathsep}{os.environ['PATH']}",
                    STUB_DIGESTS=str(digests), PROMOTION_RECORD_PAUSE="0")
         if missing:
             env["STUB_MISSING"] = str(missing)
+        env.update(extra_env or {})
         return subprocess.run(
             [sys.executable, "-I", str(BUILDER), "build", "--rendered", str(FIXTURES / "rendered"),
              "--runtime", str(FIXTURES / runtime), "--repo-root", str(FIXTURES / "repo"),
@@ -272,6 +277,185 @@ class Record(unittest.TestCase):
         self.assertEqual(promotion_record.validate_record(record), [])
         record["scanner"]["databaseUpdatedAt"] = "yesterday"
         self.assertTrue(promotion_record.validate_record(record))
+
+
+class Resilience(unittest.TestCase):
+    def transient(self, message="429 Too Many Requests", retry_after=0):
+        return promotion_record.Transient(message, retry_after)
+
+    def attempts(self, failures, jitter, pause="2"):
+        """Run retry() against `failures` transient errors; return (result, waits)."""
+        calls, waits = [], []
+
+        def fn():
+            calls.append(1)
+            if len(calls) <= failures:
+                raise self.transient()
+            return "ok"
+        with unittest.mock.patch.dict(os.environ, PROMOTION_RECORD_PAUSE=pause):
+            return promotion_record.retry(fn, "ref", sleep=waits.append, jitter=lambda: jitter), waits
+
+    def test_run_classifies_errors(self):
+        def failure(text):
+            done = subprocess.CompletedProcess([], 1, "", text)
+            with unittest.mock.patch.object(subprocess, "run", return_value=done):
+                try:
+                    promotion_record.run(["x"])
+                except RuntimeError as e:
+                    return e
+        for text in ("429 Too Many Requests", "toomanyrequests: rate limit", "503 Service Unavailable",
+                     "i/o timeout", "connection reset by peer", "502 Bad Gateway"):
+            self.assertIsInstance(failure(text), promotion_record.Transient, text)
+        for text in ("MANIFEST_UNKNOWN: x", "404 Not Found", "unauthorized: authentication required",
+                     "no such image: sha256:" + "1500" * 16):
+            self.assertNotIsInstance(failure(text), promotion_record.Transient, text)
+
+    def test_run_reads_retry_after(self):
+        done = subprocess.CompletedProcess([], 1, "", "429 Too Many Requests\nRetry-After: 30")
+        with unittest.mock.patch.object(subprocess, "run", return_value=done):
+            with self.assertRaises(promotion_record.Transient) as raised:
+                promotion_record.run(["x"])
+        self.assertEqual(raised.exception.retry_after, 30)
+
+    def test_a_transient_error_is_retried(self):
+        result, waits = self.attempts(3, jitter=1)
+        self.assertEqual((result, waits), ("ok", [2, 4, 8]))
+
+    def test_a_permanent_error_is_not_retried(self):
+        calls, waits = [], []
+
+        def fn():
+            calls.append(1)
+            raise RuntimeError("MANIFEST_UNKNOWN")
+        with self.assertRaisesRegex(RuntimeError, "ref: MANIFEST_UNKNOWN"):
+            promotion_record.retry(fn, "ref", sleep=waits.append)
+        self.assertEqual((len(calls), waits), (1, []))
+
+    def test_jitter_keeps_the_wait_between_half_and_all_of_the_backoff(self):
+        for jitter, expected in ((0, [1, 2, 4]), (1, [2, 4, 8])):
+            self.assertEqual(self.attempts(3, jitter)[1], expected)
+
+    def test_total_wait_stays_under_the_budget_and_one_wait_under_the_cap(self):
+        def always_limited():
+            raise self.transient()
+        waits = []
+        with unittest.mock.patch.dict(os.environ, PROMOTION_RECORD_PAUSE="2"):
+            with self.assertRaises(RuntimeError):
+                promotion_record.retry(always_limited, "ref", sleep=waits.append, jitter=lambda: 1)
+        self.assertLessEqual(sum(waits), promotion_record.WAIT_BUDGET)
+        self.assertLessEqual(max(waits), promotion_record.MAX_WAIT)
+        self.assertGreater(sum(waits), 60)
+
+    def test_retry_after_is_a_floor_for_the_wait(self):
+        calls, waits = [], []
+
+        def fn():
+            calls.append(1)
+            if len(calls) == 1:
+                raise self.transient(retry_after=45)
+            return "ok"
+        with unittest.mock.patch.dict(os.environ, PROMOTION_RECORD_PAUSE="2"):
+            promotion_record.retry(fn, "ref", sleep=waits.append, jitter=lambda: 0)
+        self.assertEqual(waits, [45])
+
+    def test_a_host_gets_its_own_limit(self):
+        limits = promotion_record.HostLimits()
+        ecr = limits.slot("public.ecr.aws")
+        self.assertTrue(ecr.acquire(blocking=False))
+        self.assertFalse(ecr.acquire(blocking=False))
+        self.assertIs(limits.slot("public.ecr.aws"), ecr)
+        other = limits.slot("quay.io")
+        self.assertEqual(sum(other.acquire(blocking=False) for _ in range(10)), promotion_record.HostLimits.DEFAULT)
+
+    def test_lookups_of_one_host_never_overlap_beyond_its_limit(self):
+        limits, running, peak, lock = promotion_record.HostLimits(), [0], [0], threading.Lock()
+
+        def lookup():
+            with limits.slot("public.ecr.aws"):
+                with lock:
+                    running[0] += 1
+                    peak[0] = max(peak[0], running[0])
+                time.sleep(0.01)
+                with lock:
+                    running[0] -= 1
+        threads = [threading.Thread(target=lookup) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(peak[0], promotion_record.HostLimits.LIMITS["public.ecr.aws"])
+
+    def test_only_a_full_version_or_a_digest_is_immutable(self):
+        for ref in ("quay.io/a/b:v1.2.3", "docker.io/library/redis:8.6.4-alpine", "x.io/a:1.2.3-r1",
+                    "docker.io/rancher/rke2-upgrade:v1.37.1-rke2r1", "x.io/a@sha256:" + "1" * 64,
+                    "x.io/a:latest@sha256:" + "1" * 64):
+            self.assertTrue(promotion_record.immutable_image(ref), ref)
+        for ref in ("x.io/a", "x.io/a:latest", "x.io/a:3.23", "x.io/a:1", "x.io/a:stable", "x.io/a:main",
+                    "x.io/a:v1.2.3-latest", "x.io/a:1.2.3-nightly", "x.io/a:1.2.3-dev", "x.io/a:edge"):
+            self.assertFalse(promotion_record.immutable_image(ref), ref)
+
+
+class Cache(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = str(Path(self.tmp.name, "digests.json"))
+
+    def test_miss_hit_and_save(self):
+        cache = promotion_record.DigestCache(self.path)
+        self.assertIsNone(cache.get("k", True))
+        cache.put("k", sha("a"), True)
+        cache.save()
+        self.assertEqual(promotion_record.DigestCache(self.path).get("k", True), sha("a"))
+
+    def test_a_mutable_entry_is_neither_stored_nor_served(self):
+        cache = promotion_record.DigestCache(self.path)
+        cache.put("mutable", sha("a"), False)
+        cache.save()
+        self.assertFalse(Path(self.path).exists())
+        Path(self.path).write_text(json.dumps({"mutable": sha("a")}), encoding="utf-8")
+        self.assertIsNone(promotion_record.DigestCache(self.path).get("mutable", False))
+
+    def test_a_corrupt_file_is_an_empty_cache(self):
+        for text in ("{not json", "[1, 2]", "null", ""):
+            Path(self.path).write_text(text, encoding="utf-8")
+            self.assertEqual(promotion_record.DigestCache(self.path).entries, {}, text)
+
+    def test_a_bad_entry_is_dropped_and_a_good_one_kept(self):
+        Path(self.path).write_text(json.dumps({"a": "latest", "b": 5, "c": sha("c"), "d": "sha256:" + "G" * 64}),
+                                   encoding="utf-8")
+        self.assertEqual(promotion_record.DigestCache(self.path).entries, {"c": sha("c")})
+
+    def test_no_path_means_no_cache(self):
+        cache = promotion_record.DigestCache(None)
+        cache.put("k", sha("a"), True)
+        cache.save()
+        self.assertIsNone(cache.get("k", True))
+
+    def build(self, **env):
+        digests = Path(self.tmp.name, "stub-digests")
+        refs = REGISTRY_ONLY + [OCI_CHART, MIRROR_ONLY]
+        digests.write_text("".join(f"{r} {sha(r)}\n" for r in refs)
+                           + f"quay.io/cilium/cilium:v1.20.4 {CILIUM.split('@')[1]}\n", encoding="utf-8")
+        res = Record.run_builder.__func__(types.SimpleNamespace(tmp=self.tmp), digests, extra_env=env)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        record = json.loads(Path(self.tmp.name, "record.json").read_text(encoding="utf-8"))
+        return {i["reference"]: i for i in record["images"]}
+
+    def test_the_builder_caches_only_immutable_references(self):
+        self.build(PROMOTION_RECORD_CACHE=self.path)
+        cached = json.loads(Path(self.path).read_text(encoding="utf-8"))
+        self.assertIn("quay.io/argoproj/argocd:v3.6.0", cached)
+        for mutable in ("docker.io/library/alpine:3.23", "docker.io/library/nginx:1.29"):
+            self.assertNotIn(mutable, cached)
+
+    def test_the_cache_is_used_only_when_asked_for(self):
+        ref = "quay.io/argoproj/argocd:v3.6.0"
+        poisoned = "sha256:" + "f" * 64
+        Path(self.path).write_text(json.dumps({ref: poisoned}), encoding="utf-8")
+        self.assertEqual(self.build(PROMOTION_RECORD_CACHE=self.path)[ref]["digest"], poisoned)
+        # The promotion path sets no cache variable, so the poisoned entry never reaches it.
+        self.assertEqual(self.build()[ref]["digest"], sha(ref))
 
 
 if __name__ == "__main__":
