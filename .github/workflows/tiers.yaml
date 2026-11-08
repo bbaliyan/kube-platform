@@ -98,6 +98,40 @@ jobs:
           path: kind-logs/
           if-no-files-found: ignore
 
+  # Upgrade from the current stable, as Promote does. It runs beside
+  # `integration`, so it adds no wall time. Add it to the ruleset to gate merges.
+  integration-stable:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the stable commit
+        id: stable
+        run: |
+          sha=$(git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" refs/heads/stable | cut -f1)
+          if [ -z "$sha" ]; then
+            echo "::error::Cannot read the stable branch. The upgrade-from-stable case needs it."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          # renovate: datasource=github-releases depName=helm/helm
+          version: v4.3.1
+      - run: pip install --quiet pyyaml
+      - run: make test-integration GENESIS_REF="$STABLE_SHA"
+        env:
+          STABLE_SHA: ${{ steps.stable.outputs.sha }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() }}
+        with:
+          name: kind-logs-stable
+          path: kind-logs/
+          if-no-files-found: ignore
+
   # Not a required check. It runs after integration and adds no time to it.
   # It builds the promotion record from the rendered clusters and the images
   # the kind run reported. See ci/README.md.
