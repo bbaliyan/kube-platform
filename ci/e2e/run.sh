@@ -49,8 +49,10 @@ fi
   --image "kindest/node:${kind_node_version}" --wait 0s
 
 # What a node's first boot installs before Argo CD takes over: Cilium and Argo CD
-# as plain manifests. With GENESIS_REF set, at that commit's versions, so a
-# version bump is tested as the upgrade it is on every cluster. kind's own
+# as plain manifests. With GENESIS_REF set, at that commit's versions (Cilium
+# and the Argo CD chart), so a version bump is tested as the upgrade it is on
+# every cluster. The Argo CD values always come from this tree, because older
+# commits keep them elsewhere. kind's own
 # local-path provisioner goes, so the platform's is the only one.
 genesis_versions="$tmp/genesis-versions.yaml"
 if [ -n "${GENESIS_REF:-}" ]; then
@@ -78,8 +80,7 @@ kubectl delete namespace local-path-storage --wait=false
 make argocd-bootstrap >/dev/null
 cp out/argocd-bootstrap/argocd-bootstrap.yaml "$tmp/argocd-head.yaml"
 if [ -n "${GENESIS_REF:-}" ]; then
-  git show "$GENESIS_REF:bootstrap/argocd-values.yaml" > "$tmp/genesis-argocd-values.yaml"
-  make argocd-bootstrap PLATFORM_VERSIONS="$genesis_versions" ARGOCD_VALUES="$tmp/genesis-argocd-values.yaml" >/dev/null
+  make argocd-bootstrap PLATFORM_VERSIONS="$genesis_versions" >/dev/null
 fi
 cat out/argocd-bootstrap/argocd-bootstrap.yaml "$tmp/argocd-head.yaml" | KIND="$kind_bin" ci/e2e/preload-images.sh
 (cd out/argocd-bootstrap && sha256sum -c argocd-bootstrap.yaml.sha256)
