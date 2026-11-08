@@ -32,7 +32,11 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" \
-            --notes "Argo CD bootstrap manifest. Verify it with sha256sum -c argocd-bootstrap.yaml.sha256." \
+            --notes "Argo CD bootstrap manifest. In the download directory, verify it with sha256sum -c argocd-bootstrap.yaml.sha256, then apply it with kubectl apply --server-side --force-conflicts -f argocd-bootstrap.yaml." \
             out/argocd-bootstrap/argocd-bootstrap.yaml out/argocd-bootstrap/argocd-bootstrap.yaml.sha256
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
-          [ "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .immutable)" = true ]             || { echo "The release is not immutable. Turn on release immutability in the repository settings." >&2; exit 1; }
+          immutable="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .immutable)"
+          if [ "$immutable" != true ]; then
+            echo "The release is not immutable. Turn on release immutability in the repository settings." >&2
+            exit 1
+          fi
