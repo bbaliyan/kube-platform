@@ -274,6 +274,8 @@ jobs:
       # the trusted Makefile. No candidate code runs. A render failure stops the
       # run before anything moves.
       - name: Build the bootstrap manifest
+        env:
+          CANDIDATE: ${{ needs.choose.outputs.sha }}
         run: |
           mkdir -p candidate-data/platform/platform-versions candidate-data/bootstrap
           git show "$CANDIDATE:platform/platform-versions/values.yaml" > candidate-data/platform/platform-versions/values.yaml
