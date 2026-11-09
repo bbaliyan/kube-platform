@@ -85,6 +85,9 @@ democratic-csi:
         requests: {cpu: 20m, memory: 64Mi}
         limits: {cpu: 200m, memory: 256Mi}
   node:
+    # The node plugin mounts the volumes, so it must run on every node, tainted or not.
+    tolerations:
+      - operator: Exists
     driver:
       image:
         registry: ghcr.io/democratic-csi/democratic-csi
