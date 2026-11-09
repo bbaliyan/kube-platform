@@ -4,3 +4,7 @@
 operator:
   # The chart default of 2 replicas stays Pending on a single node.
   replicas: 1
+# Hubble's TLS secrets get a new certificate authority on every render, which
+# breaks a stable render. The first boot does not need flow observability.
+hubble:
+  enabled: false
