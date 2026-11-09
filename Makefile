@@ -137,7 +137,8 @@ argocd-bootstrap: | clean-out
 # (bootstrap/cilium-values.yaml) and the boot-only bootstrap/cilium-boot-values.yaml.
 # Argo CD is the same manifest as the argocd-bootstrap release asset.
 #   boot-renders        write the renders to BOOT_RENDER_DIR; run it after a version
-#                       or values change and commit the result
+#                       or values change and commit the result. Run it in the
+#                       kube-devenv image: another helm version changes the output
 #   boot-renders-check  render again into out/ and fail on a difference
 CILIUM_VERSION = $(shell sed -n 's/^ciliumVersion: *"\{0,1\}\([^" #]*\).*/\1/p' $(PLATFORM_VERSIONS))
 CILIUM_VALUES ?= bootstrap/cilium-values.yaml
