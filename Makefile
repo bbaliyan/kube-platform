@@ -47,7 +47,7 @@ JOBS ?= $(shell read -r quota period </sys/fs/cgroup/cpu.max 2>/dev/null && [ "$
 test-commit:
 	$(MAKE) --jobs=$(JOBS) --output-sync=target --no-print-directory commit-checks
 
-commit-checks: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas node-exporter dropped-metrics commit-messages argocd-bootstrap boot-renders-check
+commit-checks: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas node-exporter dropped-metrics commit-messages boot-renders-check
 
 test-fast: lint-scripts lint-yaml secrets
 
@@ -109,12 +109,9 @@ $(CLUSTERS:%=node-exporter/%): node-exporter/%: render/%
 dropped-metrics: render/kind
 	tests/check-dropped-metrics.py out/head
 
-# The Argo CD bootstrap manifest and its sha256, which the promote workflow
-# attaches to its release. It is the Argo CD chart at the version of
-# platform-versions, rendered with bootstrap/argocd-values.yaml, the same file
-# the argocd Application of the bootstrap chart builds on. Rendering it in every
-# run proves that the settings still produce a manifest that Kubernetes accepts,
-# and that the render is stable.
+# Inputs of the Argo CD render in the boot renders: the Argo CD chart at the version
+# of platform-versions, with bootstrap/argocd-values.yaml, the same file the argocd
+# Application of the bootstrap chart builds on.
 PLATFORM_VERSIONS ?= platform/platform-versions/values.yaml
 ARGOCD_VALUES ?= bootstrap/argocd-values.yaml
 ARGOCD_VERSION = $(shell sed -n 's/^argocdVersion: *"\{0,1\}\([^" #]*\).*/\1/p' $(PLATFORM_VERSIONS))
@@ -123,19 +120,11 @@ ARGOCD_RENDER = helm template argocd argo-cd --repo https://argoproj.github.io/a
 
 ARGOCD_MANIFEST = { printf 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: argocd\n---\n'; $(ARGOCD_RENDER); }
 
-.PHONY: argocd-bootstrap
-argocd-bootstrap: | clean-out
-	test -n "$(ARGOCD_VERSION)"
-	mkdir -p out/argocd-bootstrap
-	$(ARGOCD_MANIFEST) > out/argocd-bootstrap/argocd-bootstrap.yaml
-	$(ARGOCD_MANIFEST) | cmp - out/argocd-bootstrap/argocd-bootstrap.yaml
-	cd out/argocd-bootstrap && sha256sum argocd-bootstrap.yaml > argocd-bootstrap.yaml.sha256 && sha256sum -c argocd-bootstrap.yaml.sha256
-
 # The boot renders: the Cilium and Argo CD manifests that a new node applies
 # at first boot, committed in bootstrap/rendered at every ref. Cilium is the
 # chart at ciliumVersion, rendered with the values of cilium-app.yaml
 # (bootstrap/cilium-values.yaml) and the boot-only bootstrap/cilium-boot-values.yaml.
-# Argo CD is the same manifest as the argocd-bootstrap release asset.
+# Argo CD is the chart at argocdVersion with bootstrap/argocd-values.yaml.
 #   boot-renders        write the renders to BOOT_RENDER_DIR; run it after a version
 #                       or values change and commit the result. Run it in the
 #                       kube-devenv image: another helm version changes the output
