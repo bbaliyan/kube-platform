@@ -12,7 +12,8 @@
 #     bootstrap/rendered/argocd.yaml from it. A new node applies those two
 #     files at first boot. The commit check fails when they are stale, so run
 #     make boot-renders after a change to ciliumVersion or argocdVersion and
-#     commit the result. So does the argocd-bootstrap release asset.
+#     commit the result. The argocd-bootstrap release asset is the same
+#     Argo CD manifest.
 #
 # The node image does not read this file. The image pins its own RKE2 version.
 # A new node boots the RKE2 version of its image, and the upgrade Plan brings it
