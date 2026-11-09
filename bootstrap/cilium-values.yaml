@@ -1,0 +1,12 @@
+# Cilium values shared by the cilium Application (templates/cilium-app.yaml)
+# and the boot render (bootstrap/rendered/cilium.yaml). Change them here only.
+kubeProxyReplacement: true
+# RKE2 runs without kube-proxy, so the agent reaches the API server directly.
+k8sServiceHost: "127.0.0.1"
+k8sServicePort: 6443
+operator:
+  tolerations:
+    - operator: Exists
+ipam:
+  operator:
+    clusterPoolIPv4PodCIDRList: ["10.42.0.0/16"]

@@ -7,12 +7,17 @@
 #     RKE2 upgrade target for running clusters.
 #   - The cilium and argocd Applications take ciliumVersion and argocdVersion
 #     from it (through the bootstrap chart's multi-source Application, see
-#     kube-compute's node-bootstrap platform_app_yaml). So does the
-#     argocd-bootstrap manifest that a new node downloads at first boot.
+#     kube-compute's node-bootstrap platform_app_yaml).
+#   - make boot-renders renders bootstrap/rendered/cilium.yaml and
+#     bootstrap/rendered/argocd.yaml from it. A new node applies those two
+#     files at first boot. The commit check fails when they are stale, so run
+#     make boot-renders after a change to ciliumVersion or argocdVersion and
+#     commit the result. The argocd-bootstrap release asset is the same
+#     Argo CD manifest.
 #
-# The node image does not read this file. kube-images pins its own RKE2 and
-# Cilium versions. A new node boots the RKE2 version of its image, and the
-# upgrade Plan brings it forward.
+# The node image does not read this file. The image pins its own RKE2 version.
+# A new node boots the RKE2 version of its image, and the upgrade Plan brings it
+# forward.
 #
 # Bumping a version here is the entire operator action for a routine RKE2/platform
 # component upgrade — no terragrunt apply required for the upgrade itself. The RKE2
