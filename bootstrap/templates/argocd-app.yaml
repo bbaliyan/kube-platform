@@ -31,10 +31,9 @@ spec:
     repoURL: https://argoproj.github.io/argo-helm
     chart: argo-cd
     # Self-management: Argo CD reconciling its own installation. A node's
-    # first boot downloads the manifest this repo publishes with each release
-    # (make argocd-bootstrap), verifies its sha256 and applies it server-side,
-    # purely to get a running Argo CD. That manifest is rendered from the same
-    # chart and bootstrap/argocd-values.yaml. From here on, bumping
+    # first boot applies bootstrap/rendered/argocd.yaml from the platform ref
+    # server-side, purely to get a running Argo CD. That manifest is rendered
+    # from the same chart and bootstrap/argocd-values.yaml (make boot-renders). From here on, bumping
     # platform/platform-versions/values.yaml's argocdVersion upgrades Argo CD:
     # an ordinary in-place Helm upgrade. A rolling update keeps the controller
     # performing the sync alive until its replacement is Ready. targetRevision

@@ -71,20 +71,18 @@ kubectl delete storageclass standard
 kubectl delete clusterrole local-path-provisioner-role
 kubectl delete clusterrolebinding local-path-provisioner-bind
 kubectl delete namespace local-path-storage --wait=false
-# Argo CD is installed as a node's first boot installs it: the manifest that
-# `make argocd-bootstrap` renders for the release, checked against its sha256 and
-# applied server-side. The Application then takes it over. The runner hands the
-# images to the node, so a rate-limited registry cannot fail the run. The images
-# of this commit's version are loaded too, because the takeover upgrades to
-# them. See ci/e2e/preload-images.sh.
-make argocd-bootstrap >/dev/null
-cp out/argocd-bootstrap/argocd-bootstrap.yaml "$tmp/argocd-head.yaml"
+# Argo CD is installed as a node's first boot installs it: the render in
+# bootstrap/rendered/argocd.yaml, applied server-side. The Application then takes
+# it over. The runner hands the images to the node, so a rate-limited registry
+# cannot fail the run. The images of this commit's version are loaded too,
+# because the takeover upgrades to them. See ci/e2e/preload-images.sh.
+argocd_boot=bootstrap/rendered/argocd.yaml
 if [ -n "${GENESIS_REF:-}" ]; then
-  make argocd-bootstrap PLATFORM_VERSIONS="$genesis_versions" >/dev/null
+  make boot-renders PLATFORM_VERSIONS="$genesis_versions" BOOT_RENDER_DIR="$tmp/genesis-renders" >/dev/null
+  argocd_boot="$tmp/genesis-renders/argocd.yaml"
 fi
-cat out/argocd-bootstrap/argocd-bootstrap.yaml "$tmp/argocd-head.yaml" | KIND="$kind_bin" ci/e2e/preload-images.sh
-(cd out/argocd-bootstrap && sha256sum -c argocd-bootstrap.yaml.sha256)
-kubectl apply --server-side --force-conflicts -f out/argocd-bootstrap/argocd-bootstrap.yaml >/dev/null
+cat "$argocd_boot" bootstrap/rendered/argocd.yaml | KIND="$kind_bin" ci/e2e/preload-images.sh
+kubectl apply --server-side --force-conflicts -f "$argocd_boot" >/dev/null
 kubectl -n argocd rollout status deployment,statefulset --timeout=5m
 
 # Argo CD fetches the commit from GitHub itself, which serves it from the
