@@ -47,7 +47,7 @@ JOBS ?= $(shell read -r quota period </sys/fs/cgroup/cpu.max 2>/dev/null && [ "$
 test-commit:
 	$(MAKE) --jobs=$(JOBS) --output-sync=target --no-print-directory commit-checks
 
-commit-checks: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas node-exporter dropped-metrics commit-messages argocd-bootstrap
+commit-checks: test-fast lint-pipelines lint-renovate test-scripts render app-finalizers schemas node-exporter dropped-metrics commit-messages argocd-bootstrap boot-renders-check
 
 test-fast: lint-scripts lint-yaml secrets
 
@@ -121,13 +121,42 @@ ARGOCD_VERSION = $(shell sed -n 's/^argocdVersion: *"\{0,1\}\([^" #]*\).*/\1/p' 
 ARGOCD_RENDER = helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm \
 	--version $(ARGOCD_VERSION) --namespace argocd --include-crds --values $(ARGOCD_VALUES)
 
+ARGOCD_MANIFEST = { printf 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: argocd\n---\n'; $(ARGOCD_RENDER); }
+
 .PHONY: argocd-bootstrap
 argocd-bootstrap: | clean-out
 	test -n "$(ARGOCD_VERSION)"
 	mkdir -p out/argocd-bootstrap
-	{ printf 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: argocd\n---\n'; $(ARGOCD_RENDER); } > out/argocd-bootstrap/argocd-bootstrap.yaml
-	{ printf 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: argocd\n---\n'; $(ARGOCD_RENDER); } | cmp - out/argocd-bootstrap/argocd-bootstrap.yaml
+	$(ARGOCD_MANIFEST) > out/argocd-bootstrap/argocd-bootstrap.yaml
+	$(ARGOCD_MANIFEST) | cmp - out/argocd-bootstrap/argocd-bootstrap.yaml
 	cd out/argocd-bootstrap && sha256sum argocd-bootstrap.yaml > argocd-bootstrap.yaml.sha256 && sha256sum -c argocd-bootstrap.yaml.sha256
+
+# The boot renders: the Cilium and Argo CD manifests that a new node applies
+# at first boot, committed in bootstrap/rendered at every ref. Cilium is the
+# chart at ciliumVersion, rendered with the values of cilium-app.yaml
+# (bootstrap/cilium-values.yaml) and the boot-only bootstrap/cilium-boot-values.yaml.
+# Argo CD is the same manifest as the argocd-bootstrap release asset.
+#   boot-renders        write the renders to BOOT_RENDER_DIR; run it after a version
+#                       or values change and commit the result
+#   boot-renders-check  render again into out/ and fail on a difference
+CILIUM_VERSION = $(shell sed -n 's/^ciliumVersion: *"\{0,1\}\([^" #]*\).*/\1/p' $(PLATFORM_VERSIONS))
+CILIUM_VALUES ?= bootstrap/cilium-values.yaml
+CILIUM_BOOT_VALUES ?= bootstrap/cilium-boot-values.yaml
+BOOT_RENDER_DIR ?= bootstrap/rendered
+CILIUM_RENDER = helm template cilium cilium --repo https://helm.cilium.io/ \
+	--version $(CILIUM_VERSION) --namespace kube-system --include-crds \
+	--values $(CILIUM_VALUES) --values $(CILIUM_BOOT_VALUES)
+
+.PHONY: boot-renders boot-renders-check
+boot-renders:
+	test -n "$(ARGOCD_VERSION)" -a -n "$(CILIUM_VERSION)"
+	mkdir -p $(BOOT_RENDER_DIR)
+	$(ARGOCD_MANIFEST) > $(BOOT_RENDER_DIR)/argocd.yaml
+	$(CILIUM_RENDER) > $(BOOT_RENDER_DIR)/cilium.yaml
+
+boot-renders-check: | clean-out
+	$(MAKE) --no-print-directory boot-renders BOOT_RENDER_DIR=out/boot-renders
+	diff -r out/boot-renders bootstrap/rendered || { echo "bootstrap/rendered is stale: run make boot-renders and commit the result"; exit 1; }
 
 secrets:
 	$(CHECKS)/secrets.sh .
