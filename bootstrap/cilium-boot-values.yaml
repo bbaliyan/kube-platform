@@ -1,0 +1,6 @@
+# Cilium values only for the boot render (bootstrap/rendered/cilium.yaml), on
+# top of cilium-values.yaml. The first boot needs just enough CNI for the node
+# to become Ready. The Application sets the rest.
+operator:
+  # The chart default of 2 replicas stays Pending on a single node.
+  replicas: 1
