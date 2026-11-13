@@ -22,14 +22,6 @@ spec:
           value: {{ .Values.repoCredsUrlPrefix | quote }}
         - name: repoCredsUsername
           value: {{ .Values.repoCredsUsername | quote }}
-        - name: vaultAddr
-          value: {{ .Values.vaultAddr | quote }}
-        - name: vaultRole
-          value: {{ .Values.vaultRole | quote }}
-        - name: vaultAuthMountPath
-          value: {{ .Values.vaultAuthMountPath | quote }}
-        - name: vaultSecretPath
-          value: {{ .Values.vaultSecretPath | quote }}
         - name: awsRegion
           value: {{ .Values.secretStoreRegion | default .Values.awsRegion | quote }}
         - name: ssmParameterPath

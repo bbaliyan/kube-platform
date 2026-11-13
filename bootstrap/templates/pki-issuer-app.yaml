@@ -22,12 +22,6 @@ spec:
           value: {{ .Values.secretStoreType | quote }}
         - name: awsRegion
           value: {{ .Values.secretStoreRegion | default .Values.awsRegion | quote }}
-        - name: vaultAddr
-          value: {{ .Values.vaultAddr | quote }}
-        - name: vaultRole
-          value: {{ .Values.vaultRole | quote }}
-        - name: vaultAuthMountPath
-          value: {{ .Values.vaultAuthMountPath | quote }}
         - name: azureKeyVaultUrl
           value: {{ .Values.azureKeyVaultUrl | quote }}
         - name: azureTenantId
@@ -38,8 +32,6 @@ spec:
           value: {{ .Values.ssmByoCaChainPath | quote }}
         - name: ssmByoCaKeyPath
           value: {{ .Values.ssmByoCaKeyPath | quote }}
-        - name: vaultByoCaPath
-          value: {{ .Values.vaultByoCaPath | quote }}
         - name: azureByoCaCertName
           value: {{ .Values.azureByoCaCertName | quote }}
         - name: azureByoCaChainName
@@ -61,12 +53,6 @@ spec:
           value: {{ .Values.secretStoreType | quote }}
         - name: awsRegion
           value: {{ .Values.secretStoreRegion | default .Values.awsRegion | quote }}
-        - name: vaultAddr
-          value: {{ .Values.vaultAddr | quote }}
-        - name: vaultRole
-          value: {{ .Values.vaultRole | quote }}
-        - name: vaultAuthMountPath
-          value: {{ .Values.vaultAuthMountPath | quote }}
         - name: azureKeyVaultUrl
           value: {{ .Values.azureKeyVaultUrl | quote }}
         - name: azureTenantId
