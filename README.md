@@ -17,7 +17,7 @@ to already be there.
 | Wildcard certificate, routes to the UIs | cert-manager, Traefik | `clusterFqdnSuffix` |
 | Certificates | cert-manager and its CSI driver: self-signed, your own CA, or ACME* | always |
 | Trusting an internal CA | trust-manager, distributing your CA to every namespace | `trustedCaPemB64` |
-| Secrets | External Secrets, reading Vault/OpenBao, AWS SSM or Azure Key Vault | store: `secretStoreType` |
+| Secrets | External Secrets, reading Vault, AWS SSM or Azure Key Vault | store: `secretStoreType` |
 | Private git repos | Argo CD repo credentials from that store; trust for a git server with an internal CA | `secretStoreType`; `trustedCaPemB64` + `argocdTlsCertHostname` |
 | Storage | AWS EBS, democratic-csi (TrueNAS iSCSI/NFS), Longhorn, local-path | `storageProvisioners` |
 | Metrics, dashboards, alerts | Prometheus, Grafana, Alertmanager | always |
