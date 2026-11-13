@@ -1,6 +1,6 @@
 # A Proxmox cluster as kube-compute's proxmox-cluster module renders it
 # (node-bootstrap's platform_app_yaml): repo credentials and a BYO CA from
-# OpenBao/Vault, local-path plus Longhorn storage,
+# Vault, local-path plus Longhorn storage,
 # an extra Traefik entrypoint and Grafana plugins on a named storage class.
 # It also has a workloads repo, so observability reads platform-values/observability.yaml
 # from it; this repo stands in for that repo and has no such file.
