@@ -124,6 +124,10 @@ spec:
           additionalDataSources:
             - name: Loki
               type: loki
+              # uid pinned: the dashboard ConfigMap in the agent workload's
+              # chart references Loki by uid, and a generated uid would change
+              # if the datasource is ever recreated.
+              uid: loki
               url: http://loki.loki.svc.cluster.local:3100
               access: proxy
               isDefault: false
@@ -229,6 +233,35 @@ spec:
                       - argocd-applicationset-controller
               podMetricsEndpoints:
                 - port: metrics
+            # The substrate's atenet data plane. The router's Go metrics are
+            # the documented SLI (atenet_router_route_duration_seconds —
+            # command routing latency, labelled per template and outcome);
+            # both pods' Envoy stats cover the actor ingress (router) and the
+            # model calls (egress: rate, latency, status classes, TLS errors)
+            # — the PR-Agent KPIs. Both pods expose these as named container
+            # ports, so a PodMonitor scrapes them directly, like argocd above.
+            - name: atenet-router
+              namespaceSelector:
+                matchNames:
+                  - ate-system
+              selector:
+                matchLabels:
+                  app: atenet-router
+              podMetricsEndpoints:
+                - port: metrics
+                  path: /metrics
+                - port: envoy-metrics
+                  path: /stats/prometheus
+            - name: atenet-egress
+              namespaceSelector:
+                matchNames:
+                  - ate-system
+              selector:
+                matchLabels:
+                  app: atenet-egress
+              podMetricsEndpoints:
+                - port: envoy-metrics
+                  path: /stats/prometheus
           prometheusSpec:
             priorityClassName: platform
             {{- include "platform.nodeSelector" . | nindent 12 }}
