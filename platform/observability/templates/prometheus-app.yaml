@@ -124,6 +124,10 @@ spec:
           additionalDataSources:
             - name: Loki
               type: loki
+              # uid pinned: workloads' dashboards reference Loki by uid, and a
+              # generated uid would change if the datasource is ever
+              # recreated, silently breaking them.
+              uid: loki
               url: http://loki.loki.svc.cluster.local:3100
               access: proxy
               isDefault: false
@@ -231,6 +235,15 @@ spec:
                 - port: metrics
           prometheusSpec:
             priorityClassName: platform
+            # Select workload-owned PodMonitors cluster-wide: without this the
+            # Prometheus only selects PodMonitors carrying the release label,
+            # so a workload's own PodMonitor (shipped in its namespace, per
+            # the multi-tenant shape: the platform runs the operator, every
+            # workload owns its scrape config) is invisible to it. The
+            # sidecar-dashboards equivalent is already on (the grafana
+            # sidecar's searchNamespace: ALL above) — this is the metrics
+            # side of the same contract.
+            podMonitorSelectorNilUsesHelmValues: false
             {{- include "platform.nodeSelector" . | nindent 12 }}
             retention: {{ .Values.prometheus.retention }}
 {{- if .Values.prometheus.retentionSize }}
