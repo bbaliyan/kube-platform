@@ -7,9 +7,6 @@ secretStoreType: ""   # vault | aws-ssm | azure-keyvault
 # Provider connection details for this chart's own ClusterSecretStore
 # (byo-ca-store) — independent of any other chart's secret store.
 awsRegion: ""          # aws-ssm: e.g. eu-west-1
-vaultAddr: ""          # vault: e.g. http://192.168.1.20:8200
-vaultRole: ""          # vault: Kubernetes auth role bound to ESO's service account
-vaultAuthMountPath: "kubernetes"   # vault: Kubernetes-auth mount path this cluster was registered under
 azureKeyVaultUrl: ""   # azure-keyvault: e.g. https://my-kv.vault.azure.net
 azureTenantId: ""      # azure-keyvault: e.g. 00000000-0000-0000-0000-000000000000
 
@@ -19,9 +16,6 @@ azureTenantId: ""      # azure-keyvault: e.g. 00000000-0000-0000-0000-0000000000
 ssmByoCaCertPath: ""    # e.g. .../cert.pem  (signing cert — must match the key)
 ssmByoCaChainPath: ""   # e.g. .../chain.pem (parent chain above the signing cert)
 ssmByoCaKeyPath: ""     # e.g. .../private.pem
-
-# Vault — one KV v2 secret with cert, chain, and key properties
-vaultByoCaPath: ""      # e.g. secret/data/kube/cluster-1/byo-ca
 
 # Azure Key Vault — three separate secrets
 azureByoCaCertName: ""

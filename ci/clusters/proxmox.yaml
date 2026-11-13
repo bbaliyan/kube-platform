@@ -1,6 +1,6 @@
 # A Proxmox cluster as kube-compute's proxmox-cluster module renders it
 # (node-bootstrap's platform_app_yaml): repo credentials and a BYO CA from
-# Vault, local-path plus Longhorn storage,
+# AWS SSM, local-path plus Longhorn storage,
 # an extra Traefik entrypoint and Grafana plugins on a named storage class.
 # It also has a workloads repo, so observability reads platform-values/observability.yaml
 # from it; this repo stands in for that repo and has no such file.
@@ -27,8 +27,12 @@ spec:
             value: "byo"
           - name: pkiIssuerName
             value: "org-ca-issuer"
-          - name: vaultByoCaPath
-            value: "secret/data/kube/cluster-1/byo-ca"
+          - name: ssmByoCaCertPath
+            value: "/kube/cluster-1/ca-cert"
+          - name: ssmByoCaChainPath
+            value: "/kube/cluster-1/ca-chain"
+          - name: ssmByoCaKeyPath
+            value: "/kube/cluster-1/ca-key"
           - name: clusterName
             value: "cluster-1"
           - name: clusterFqdnSuffix
@@ -36,13 +40,11 @@ spec:
           - name: trustedCaPemB64
             value: ""
           - name: secretStoreType
-            value: "vault"
-          - name: vaultAddr
-            value: "http://192.0.2.22:8200"
-          - name: vaultRole
-            value: "eso-kube-apps"
-          - name: vaultSecretPath
-            value: "secret/data/kube/cluster-1/repo-cred"
+            value: "aws-ssm"
+          - name: awsRegion
+            value: "eu-west-1"
+          - name: ssmParameterPath
+            value: "/kube/cluster-1/repo-cred"
           - name: repoCredsUrlPrefix
             value: "https://git.example.com/"
           - name: repoCredsUsername

@@ -19,8 +19,5 @@ cloudflareTokenRef: ""
 # The secret store, for cloudflareTokenRef. Same settings as bootstrap's.
 secretStoreType: ""   # vault | aws-ssm | azure-keyvault
 awsRegion: ""
-vaultAddr: ""
-vaultRole: ""
-vaultAuthMountPath: "kubernetes"
 azureKeyVaultUrl: ""
 azureTenantId: ""
