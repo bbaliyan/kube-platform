@@ -63,6 +63,23 @@
       "automerge": false
     },
     {
+      "description": "bootstrap/rendered holds the Argo CD and Cilium manifests that make boot-renders produces from these two chart versions, and CI fails if they differ. Renovate renders them again in the same branch. The helm version matches the one in the kube-devenv image. The runner must allow both commands (RENOVATE_ALLOWED_COMMANDS in bbaliyan/renovate-config).",
+      "matchPackageNames": [
+        "argo-cd",
+        "cilium"
+      ],
+      "postUpgradeTasks": {
+        "commands": [
+          "install-tool helm 4.3.1",
+          "make boot-renders"
+        ],
+        "fileFilters": [
+          "bootstrap/rendered/*.yaml"
+        ],
+        "executionMode": "branch"
+      }
+    },
+    {
       "description": "The promote workflow can move stable and holds the deploy key. A person reads every change to it, its scripts and its pinned packages.",
       "matchFileNames": [
         ".github/workflows/promote.yaml",
