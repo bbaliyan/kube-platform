@@ -7,7 +7,6 @@ mkdir -p "$dir"
 collect() {
   os=$(. /host/etc/os-release && echo " $ID ${ID_LIKE:-} ")
   case "$os" in
-    *" debian "*) chroot /host /bin/sh -s < /scripts/apt.sh ;;
     *" rhel "* | *" fedora "*) chroot /host /bin/bash -s < /scripts/yum.sh ;;
     *) echo "unsupported OS:$os" >&2; return 1 ;;
   esac

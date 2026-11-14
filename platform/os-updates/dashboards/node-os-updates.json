@@ -65,7 +65,7 @@
       "gridPos": {
         "x": 0,
         "y": 0,
-        "w": 5,
+        "w": 6,
         "h": 4
       },
       "targets": [
@@ -121,9 +121,9 @@
         "uid": "${datasource}"
       },
       "gridPos": {
-        "x": 5,
+        "x": 6,
         "y": 0,
-        "w": 5,
+        "w": 6,
         "h": 4
       },
       "targets": [
@@ -132,7 +132,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "count(((sum by (instance) (apt_upgrades_pending) or sum by (instance) (yum_upgrades_pending)) > 0) and on (instance) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"}) or vector(0)",
+          "expr": "count((sum by (instance) (yum_upgrades_pending) > 0) and on (instance) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"}) or vector(0)",
           "refId": "A",
           "instant": true,
           "range": false
@@ -179,9 +179,9 @@
         "uid": "${datasource}"
       },
       "gridPos": {
-        "x": 10,
+        "x": 12,
         "y": 0,
-        "w": 5,
+        "w": 6,
         "h": 4
       },
       "targets": [
@@ -190,7 +190,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum((sum by (instance) (apt_upgrades_pending) or sum by (instance) (yum_upgrades_pending)) and on (instance) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"}) or vector(0)",
+          "expr": "sum(sum by (instance) (yum_upgrades_pending) and on (instance) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"}) or vector(0)",
           "refId": "A",
           "instant": true,
           "range": false
@@ -228,64 +228,6 @@
       }
     },
     {
-      "id": 4,
-      "type": "stat",
-      "title": "Security updates",
-      "description": "Pending updates from a -security origin (Debian and Ubuntu only).",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "gridPos": {
-        "x": 15,
-        "y": 0,
-        "w": 5,
-        "h": 4
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum(sum by (instance) (apt_upgrades_pending{origin=~\".*-security.*\"}) and on (instance) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"}) or vector(0)",
-          "refId": "A",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value"
-      }
-    },
-    {
       "id": 5,
       "type": "stat",
       "title": "Not reporting",
@@ -295,9 +237,9 @@
         "uid": "${datasource}"
       },
       "gridPos": {
-        "x": 20,
+        "x": 18,
         "y": 0,
-        "w": 4,
+        "w": 6,
         "h": 4
       },
       "targets": [
@@ -385,19 +327,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "(sum by (instance) (apt_upgrades_pending) or sum by (instance) (yum_upgrades_pending)) and on (instance) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"}",
+          "expr": "sum by (instance) (yum_upgrades_pending) and on (instance) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"}",
           "refId": "C",
-          "format": "table",
-          "instant": true,
-          "range": false
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (instance) (apt_upgrades_pending{origin=~\".*-security.*\"}) and on (instance) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"}",
-          "refId": "D",
           "format": "table",
           "instant": true,
           "range": false
@@ -465,7 +396,6 @@
               "pretty_name": 1,
               "release": 2,
               "Value #C": 3,
-              "Value #D": 4,
               "Value #E": 5,
               "Value #F": 6,
               "Value #G": 7
@@ -475,7 +405,6 @@
               "pretty_name": "OS",
               "release": "Kernel",
               "Value #C": "Pending updates",
-              "Value #D": "Security updates",
               "Value #E": "Reboot required",
               "Value #F": "Uptime",
               "Value #G": "Last checked"
@@ -541,41 +470,6 @@
                     },
                     {
                       "color": "yellow",
-                      "value": 1
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Security updates"
-            },
-            "properties": [
-              {
-                "id": "decimals",
-                "value": 0
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-background",
-                  "mode": "basic"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "red",
                       "value": 1
                     }
                   ]
@@ -692,7 +586,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "(sum by (instance) (apt_upgrades_pending) or sum by (instance) (yum_upgrades_pending)) * on (instance) group_left (nodename) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"}",
+          "expr": "sum by (instance) (yum_upgrades_pending) * on (instance) group_left (nodename) node_uname_info{job=\"node-exporter\", nodename=~\"$node\"}",
           "refId": "A",
           "legendFormat": "{{nodename}}"
         }
