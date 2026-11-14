@@ -20,7 +20,7 @@ jobs:
   commit:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    container: ghcr.io/bbaliyan/kube-devenv:0.14.0
+    container: ghcr.io/bbaliyan/kube-devenv:0.15.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,7 +35,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    container: ghcr.io/bbaliyan/kube-devenv:0.14.0
+    container: ghcr.io/bbaliyan/kube-devenv:0.15.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -186,7 +186,7 @@ jobs:
     if: ${{ github.event_name != 'pull_request' && needs.record.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    container: ghcr.io/bbaliyan/kube-devenv:0.14.0
+    container: ghcr.io/bbaliyan/kube-devenv:0.15.0
     env:
       DOCKER_CONFIG: /tmp/docker-config
     steps:
@@ -242,7 +242,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    container: ghcr.io/bbaliyan/kube-devenv:0.14.0
+    container: ghcr.io/bbaliyan/kube-devenv:0.15.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
