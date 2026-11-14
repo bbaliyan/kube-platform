@@ -385,7 +385,6 @@
               "Time 4": true,
               "Time 5": true,
               "Time 6": true,
-              "Time 7": true,
               "Time": true,
               "instance": true,
               "Value #A": true,
@@ -396,9 +395,9 @@
               "pretty_name": 1,
               "release": 2,
               "Value #C": 3,
-              "Value #E": 5,
-              "Value #F": 6,
-              "Value #G": 7
+              "Value #E": 4,
+              "Value #F": 5,
+              "Value #G": 6
             },
             "renameByName": {
               "nodename": "Node",
