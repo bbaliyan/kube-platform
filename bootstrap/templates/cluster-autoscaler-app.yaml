@@ -23,6 +23,16 @@ spec:
         autoDiscovery:
           clusterName: {{ required "clusterName must be set" .Values.clusterName | quote }}
         awsRegion: {{ required "awsRegion must be set for the aws cloud provider" .Values.awsRegion | quote }}
+        {{- $role := include "platform.awsRole" (dict "root" . "role" "clusterAutoscaler") }}
+        {{- if $role }}
+        extraEnv:
+          AWS_ROLE_ARN: {{ $role | quote }}
+          AWS_WEB_IDENTITY_TOKEN_FILE: /var/run/secrets/aws-pod-identity/token
+        extraVolumes:
+          {{- include "platform.awsTokenVolume" . | nindent 10 }}
+        extraVolumeMounts:
+          {{- include "platform.awsTokenMount" . | nindent 10 }}
+        {{- end }}
         extraArgs:
           expander: least-waste
           # The chart defaults to 4, which logs every step of the loop it runs

@@ -2,6 +2,8 @@ secretStoreType: ""
 repoCredsUrlPrefix: ""
 repoCredsUsername: ""   # required when repoCredsUrlPrefix is https (token auth)
 awsRegion: ""
+# true: the aws-ssm store assumes a role through the External Secrets service account token.
+awsPodIdentity: false
 ssmParameterPath: ""
 azureKeyVaultUrl: ""
 azureTenantId: ""

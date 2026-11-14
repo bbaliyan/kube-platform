@@ -7,6 +7,8 @@ secretStoreType: ""   # vault | aws-ssm | azure-keyvault
 # Provider connection details for this chart's own ClusterSecretStore
 # (byo-ca-store) — independent of any other chart's secret store.
 awsRegion: ""          # aws-ssm: e.g. eu-west-1
+# true: the aws-ssm store assumes a role through the External Secrets service account token.
+awsPodIdentity: false
 azureKeyVaultUrl: ""   # azure-keyvault: e.g. https://my-kv.vault.azure.net
 azureTenantId: ""      # azure-keyvault: e.g. 00000000-0000-0000-0000-000000000000
 
