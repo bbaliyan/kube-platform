@@ -417,6 +417,8 @@ What each role changes:
 The trust policy of each role must name the service account in the table and
 the audience `sts.amazonaws.com`.
 
+External Secrets adds the audience `sts.amazonaws.com` to its token by itself, so the stores do not set it. The region of the secret store (`secretStoreRegion`, default `awsRegion`) must match the region the role uses.
+
 ## Block the instance metadata service
 
 On AWS, each node serves its user data and its node role credentials at
