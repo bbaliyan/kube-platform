@@ -177,7 +177,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-    container: ghcr.io/bbaliyan/kube-devenv:0.14.0
+    container: ghcr.io/bbaliyan/kube-devenv:0.15.0
     outputs:
       slot: ${{ steps.pick.outputs.slot }}
       sha: ${{ steps.pick.outputs.sha }}
@@ -240,7 +240,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-    container: ghcr.io/bbaliyan/kube-devenv:0.14.0
+    container: ghcr.io/bbaliyan/kube-devenv:0.15.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -294,7 +294,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: promote
-    container: ghcr.io/bbaliyan/kube-devenv:0.14.0
+    container: ghcr.io/bbaliyan/kube-devenv:0.15.0
     permissions:
       contents: write
       id-token: write
@@ -423,7 +423,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: promote
-    container: ghcr.io/bbaliyan/kube-devenv:0.14.0
+    container: ghcr.io/bbaliyan/kube-devenv:0.15.0
     permissions:
       contents: read
     env:

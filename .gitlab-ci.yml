@@ -14,7 +14,7 @@ workflow:
     - if: '$CI_PIPELINE_SOURCE =~ /^(push|web)$/'
 
 default:
-  image: ghcr.io/bbaliyan/kube-devenv:0.14.0
+  image: ghcr.io/bbaliyan/kube-devenv:0.15.0
   interruptible: true
   cache: []
 
