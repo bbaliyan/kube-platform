@@ -21,8 +21,22 @@ spec:
     helm:
       valuesObject:
         aws-ebs-csi-driver:
+          {{- $ebsRole := include "platform.awsRole" (dict "root" $ "role" "ebsCsi") }}
+          {{- if $ebsRole }}
+          node:
+            # Reads the instance ID, zone and region from the Node object, not IMDS.
+            metadataSources: kubernetes
+          {{- end }}
           controller:
             {{- include "platform.placement" $ | nindent 12 }}
+            {{- if $ebsRole }}
+            env:
+              {{- include "platform.awsTokenEnv" (dict "root" $ "role" $ebsRole) | nindent 14 }}
+            volumes:
+              {{- include "platform.awsTokenVolume" . | nindent 14 }}
+            volumeMounts:
+              {{- include "platform.awsTokenMount" . | nindent 14 }}
+            {{- end }}
             # Tags dynamically-provisioned EBS volumes with the owning cluster
             # (and any operator-supplied tags) so they're identifiable — and
             # sweepable — if the node is destroyed before the CSI driver gets

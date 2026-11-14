@@ -20,6 +20,14 @@ spec:
         global:
           {{- include "platform.nodeSelector" . | nindent 10 }}
         priorityClassName: platform
+        {{- $role := include "platform.awsRole" (dict "root" . "role" "externalSecrets") }}
+        {{- if $role }}
+        # The aws-ssm secret stores assume this role through the controller's own
+        # service account token (auth.jwt.serviceAccountRef), so the pod needs no env.
+        serviceAccount:
+          annotations:
+            eks.amazonaws.com/role-arn: {{ $role | quote }}
+        {{- end }}
         resources:
           requests:
             cpu: 10m

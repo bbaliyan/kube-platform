@@ -55,6 +55,14 @@ spec:
         env:
           - name: AWS_DEFAULT_REGION
             value: {{ required "awsRegion is required when externalDnsEnabled is true" .Values.awsRegion | quote }}
+        {{- $role := include "platform.awsRole" (dict "root" . "role" "externalDns") }}
+          {{- if $role }}
+          {{- include "platform.awsTokenEnv" (dict "root" . "role" $role) | nindent 10 }}
+        extraVolumes:
+          {{- include "platform.awsTokenVolume" . | nindent 10 }}
+        extraVolumeMounts:
+          {{- include "platform.awsTokenMount" . | nindent 10 }}
+          {{- end }}
         {{- include "platform.placement" . | nindent 8 }}
   destination:
     server: https://kubernetes.default.svc

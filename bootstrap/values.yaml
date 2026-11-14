@@ -91,6 +91,18 @@ repoCredsUsername: ""
 # to know that the cluster runs on AWS.
 awsRegion: ""         # e.g. eu-west-1
 
+# Pod identity (IRSA) on AWS: a workload gets credentials from a signed token of its own
+# service account, not from the node role through the instance metadata service. Off by
+# default. A role that is empty leaves that workload on the node role. The cluster must
+# serve the issuer that the roles trust (kube-compute's aws-cluster module sets this up).
+awsPodIdentity:
+  enabled: false
+  roles:
+    ebsCsi: ""           # role ARN for the EBS CSI controller (service account ebs-csi-controller-sa)
+    clusterAutoscaler: "" # role ARN for cluster-autoscaler
+    externalDns: ""      # role ARN for external-dns
+    externalSecrets: ""  # role ARN for the External Secrets controller, used by the aws-ssm stores
+
 # Blocks pods from the EC2 instance metadata service (169.254.169.254) on an AWS
 # cluster, except in allowedNamespaces. That service serves the node's user data
 # and node role credentials to any pod that reaches it. Off by default: enable it

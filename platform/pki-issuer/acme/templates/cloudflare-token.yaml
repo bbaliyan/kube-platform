@@ -14,6 +14,14 @@ spec:
     aws:
       service: ParameterStore
       region: {{ .Values.awsRegion | quote }}
+      {{- if .Values.awsPodIdentity }}
+      auth:
+        jwt:
+          serviceAccountRef:
+            name: external-secrets
+            namespace: external-secrets
+            audiences: [sts.amazonaws.com]
+      {{- end }}
     {{- else if eq .Values.secretStoreType "azure-keyvault" }}
     azurekv:
       tenantId: {{ .Values.azureTenantId | quote }}

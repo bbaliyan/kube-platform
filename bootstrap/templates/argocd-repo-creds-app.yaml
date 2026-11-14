@@ -24,6 +24,8 @@ spec:
           value: {{ .Values.repoCredsUsername | quote }}
         - name: awsRegion
           value: {{ .Values.secretStoreRegion | default .Values.awsRegion | quote }}
+        - name: awsPodIdentity
+          value: {{ ternary "true" "false" (ne (include "platform.awsRole" (dict "root" . "role" "externalSecrets")) "") | quote }}
         - name: ssmParameterPath
           value: {{ .Values.ssmParameterPath | quote }}
         - name: azureKeyVaultUrl

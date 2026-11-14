@@ -12,6 +12,7 @@ to already be there.
 |---|---|---|
 | Networking, load balancers | Cilium (kube-proxy replacement, node IPAM LB) | always |
 | Network flow visibility | Hubble | `hubbleEnabled` |
+| AWS credentials from a pod's own identity, not the node role | Projected service account tokens (see "Pod identity on AWS") | `awsPodIdentity.enabled`, AWS only |
 | Keeping pods away from the EC2 metadata service | Cilium policy (see "Block the instance metadata service") | `imdsGuard.enabled`, AWS only |
 | Ingress | Traefik | always |
 | Wildcard certificate, routes to the UIs | cert-manager, Traefik | `clusterFqdnSuffix` |
@@ -379,6 +380,42 @@ own. It fails if a preset regex matches one of them. A chart upgrade that
 starts to use a dropped metric fails in CI before it reaches a cluster. The
 check cannot see rules and dashboards that a cluster adds, or dashboards
 that Grafana downloads at start.
+
+## Pod identity on AWS
+
+By default, platform pods that call AWS use the node role through the EC2
+metadata service. `awsPodIdentity` gives each of them its own role instead. The
+pod gets a signed token for its service account and exchanges it with AWS STS.
+No webhook is involved. The platform puts the token and the environment into
+each workload's chart values.
+
+The switch is off by default and changes nothing until you set it. The cluster
+must also serve the issuer that the roles trust. kube-compute's `aws-cluster`
+module sets that up and fills in these values.
+
+| Value | Meaning |
+|---|---|
+| `awsPodIdentity.enabled` | The switch. Default `false` |
+| `awsPodIdentity.roles.ebsCsi` | Role ARN for the EBS CSI controller (`kube-system/ebs-csi-controller-sa`) |
+| `awsPodIdentity.roles.clusterAutoscaler` | Role ARN for cluster-autoscaler (`cluster-autoscaler/cluster-autoscaler-aws-cluster-autoscaler`) |
+| `awsPodIdentity.roles.externalDns` | Role ARN for external-dns (`external-dns/external-dns`) |
+| `awsPodIdentity.roles.externalSecrets` | Role ARN for External Secrets (`external-secrets/external-secrets`) |
+
+Each role is optional. A workload with an empty role keeps using the node role.
+`awsRegion` must be set when the switch is on.
+
+What each role changes:
+
+- EBS CSI: the controller gets the token and `AWS_ROLE_ARN`, `AWS_WEB_IDENTITY_TOKEN_FILE`
+  and `AWS_REGION`. The node pods read the instance data from the Kubernetes
+  Node object (`metadataSources: kubernetes`) instead of the metadata service.
+  Each node must have a provider ID and the zone, region and instance-type labels.
+- cluster-autoscaler and external-dns: the pod gets the token and the same variables.
+- External Secrets: the controller's service account carries the role. The
+  `aws-ssm` secret stores use `auth.jwt.serviceAccountRef` to assume it.
+
+The trust policy of each role must name the service account in the table and
+the audience `sts.amazonaws.com`.
 
 ## Block the instance metadata service
 
