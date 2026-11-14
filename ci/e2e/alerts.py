@@ -41,6 +41,12 @@ KIND_ONLY = {
     "kube-controller-manager": ("listens on localhost only",
                                 {"TargetDown", "KubeControllerManagerInstanceUnreachable"}),
 }
+# Alerts that fire on kind for a reason that is not a scrape job. Only these
+# exact alerts are ignored.
+KIND_ALERTS = {
+    # The os-updates collector supports RHEL-family nodes only, and kind runs Debian.
+    "NodeOSUpdateMetricsMissing": "the collector has no Debian path",
+}
 
 
 def api(path):
@@ -81,7 +87,7 @@ def all_evaluated_since(moment):
 def expected(alert):
     labels = alert["labels"]
     job = KIND_ONLY.get(labels.get("job"))
-    return job is not None and labels["alertname"] in job[1]
+    return labels["alertname"] in KIND_ALERTS or (job is not None and labels["alertname"] in job[1])
 
 
 def describe(alert):
@@ -123,6 +129,8 @@ def main():
     missing = [f"{name} on {job}" for job, (_, names) in KIND_ONLY.items() for name in names
                if not any(a["labels"]["alertname"] == name and a["labels"].get("job") == job
                           for a in known)]
+    missing += [f"{name}" for name in KIND_ALERTS
+                if not any(a["labels"]["alertname"] == name for a in known)]
 
     lines = []
     for title, group in (("Warning or critical", map(describe, failing)),
