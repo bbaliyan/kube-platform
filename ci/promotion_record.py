@@ -271,8 +271,8 @@ TRANSIENT = re.compile(r"\b429\b|too many requests|toomanyrequests|rate limit|\b
                        r"|connection (reset|refused)|\bEOF\b|temporary failure|handshake|unavailable", re.I)
 RETRY_AFTER = re.compile(r"retry-after\W+(\d+)", re.I)
 MAX_WAIT = 60  # seconds for one wait; a rate limit window is often 1 minute
-WAIT_BUDGET = 420  # seconds of waiting for one reference, 7 minutes in total
-MAX_TRIES = 12
+WAIT_BUDGET = float(os.environ.get("PROMOTION_RECORD_WAIT_BUDGET", 170))  # seconds of waiting for one reference
+MAX_TRIES = 8 if WAIT_BUDGET <= 170 else 12
 
 
 def retry(fn, what, sleep=time.sleep, jitter=random.random):

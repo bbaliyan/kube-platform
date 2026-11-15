@@ -100,7 +100,10 @@ jobs:
           mkdir -p "$HOME/.docker"
           auth="$(printf '%s:%s' "$DOCKERHUB_USERNAME" "$DOCKERHUB_TOKEN" | base64 -w0)"
           printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}' "$auth" > "$HOME/.docker/config.json"
+      # The daily check can wait longer than a pull request check for a rate-limited registry.
       - run: make stable-watch-resolve
+        env:
+          PROMOTION_RECORD_WAIT_BUDGET: "420"
       - run: rm -rf "$HOME/.docker/config.json"
         if: ${{ always() }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
