@@ -1,0 +1,5 @@
+apiVersion: v2
+name: rustfs
+description: A single-replica RustFS S3 server on one block volume, with credentials from External Secrets.
+type: application
+version: 0.1.0

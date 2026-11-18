@@ -1,0 +1,18 @@
+{{- /*
+The image reads /etc/rustfs/bootstrap at start: buckets.json lists the buckets,
+lifecycle/<bucket>.json holds the expiry rules of one bucket.
+*/}}
+{{- $names := list }}
+{{- range .Values.buckets }}{{ $names = append $names .name }}{{ end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rustfs-bootstrap
+data:
+  buckets.json: {{ toJson $names | quote }}
+  public-access-block.json: '{"block_public_acls":true,"ignore_public_acls":true,"block_public_policy":true,"restrict_public_buckets":true}'
+  {{- range .Values.buckets }}
+  {{- $rule := dict "id" "expire" "status" "Enabled" "prefix" "" "abortIncompleteMultipartUploadDays" 1 }}
+  {{- if .expireAfterDays }}{{ $_ := set $rule "expiration" (dict "days" .expireAfterDays) }}{{ end }}
+  lifecycle-{{ .name }}.json: {{ dict "rules" (list $rule) | toJson | quote }}
+  {{- end }}

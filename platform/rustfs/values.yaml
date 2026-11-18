@@ -1,0 +1,34 @@
+image:
+  repository: rustfs/rustfs
+  # The digest pins the multi-arch index (amd64 and arm64) of the tag.
+  tag: 1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a
+
+# The StorageClass of the one data volume. A consumer sets it to a block class.
+storageClassName: ""
+storageSize: 100Gi
+
+# External Secrets reference. The store holds one entry with two properties.
+secretStore:
+  name: ""
+  kind: ClusterSecretStore
+credentials:
+  remoteKey: ""
+  accessKeyProperty: access-key
+  secretKeyProperty: secret-key
+
+# Each bucket is created at start. expireAfterDays adds an expiry rule for every
+# object in it; 0 adds none. An unfinished multipart upload is always aborted
+# after 1 day.
+buckets:
+  - name: substrate-snapshots
+    expireAfterDays: 90
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 2Gi
+
+nodeSelector: {}
+priorityClassName: ""

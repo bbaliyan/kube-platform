@@ -47,6 +47,18 @@ trustedCaPemB64: ""
 externalDnsEnabled: false
 externalDnsDomainFilter: ""     # e.g. example.internal
 dnsOwnerId: ""                   # clusterName plus the region -- see external-dns-app.yaml
+# An S3-compatible store (RustFS): one replica on one block volume. Off by
+# default. It needs a block StorageClass and an External Secrets store that
+# holds the root keys. See "S3 storage" in the README.
+rustfsEnabled: false
+rustfsStorageClassName: ""       # a block StorageClass, e.g. one that a democratic-csi iSCSI provisioner makes
+rustfsStorageSize: 100Gi         # cannot grow in place; see the README
+rustfsSecretStoreName: ""        # a (Cluster)SecretStore that holds the root keys
+rustfsSecretStoreKind: ClusterSecretStore
+rustfsCredentialsRemoteKey: ""   # one entry with the properties access-key and secret-key
+rustfsBuckets:
+  - name: substrate-snapshots
+    expireAfterDays: 90          # 0 adds no expiry rule
 traefikExtraConfig: {}          # traefikExtraConfig.ports entries are merged into traefik's ports block (web/websecure are always present)
 
 # argocd-application-controller's memory limit; empty keeps the 2Gi of

@@ -21,6 +21,7 @@ to already be there.
 | Secrets | External Secrets, reading Vault, AWS SSM or Azure Key Vault | store: `secretStoreType` |
 | Private git repos | Argo CD repo credentials from that store; trust for a git server with an internal CA | `secretStoreType`; `trustedCaPemB64` + `argocdTlsCertHostname` |
 | Storage | AWS EBS, democratic-csi (TrueNAS iSCSI/NFS), Longhorn, local-path | `storageProvisioners` |
+| S3-compatible object storage | RustFS, one replica on one block volume | `rustfsEnabled` |
 | Metrics, dashboards, alerts | Prometheus, Grafana, Alertmanager | always |
 | Logs | Loki, collected by Alloy | always |
 | Node autoscaling | cluster-autoscaler on AWS, with the cloud controller manager | `clusterAutoscalerEnabled` |
@@ -57,6 +58,53 @@ store, or create the Secret `cloudflare-api-token` (key `api-token`) in
 
 Every switch is a parameter on the root Application; `bootstrap/values.yaml`
 lists them all.
+
+## S3 storage
+
+RustFS is an S3-compatible object store. With `rustfsEnabled`, the platform runs
+one RustFS pod with one data volume. The image is pinned by digest.
+
+Set these values:
+
+1. `rustfsStorageClassName`: a block StorageClass, for example one that a
+   democratic-csi iSCSI provisioner creates. The platform does not name it.
+2. `rustfsSecretStoreName`: the External Secrets store that holds the root keys.
+3. `rustfsCredentialsRemoteKey`: one entry in that store with the properties
+   `access-key` and `secret-key`. No key is committed to this repo.
+
+The pod creates each bucket in `rustfsBuckets` when it starts. The default is
+one bucket, `substrate-snapshots`. A bucket with `expireAfterDays` above 0 gets a
+rule that deletes every object after that many days. Every bucket also aborts
+unfinished multipart uploads after 1 day. The expiry days must be longer than
+the longest time that a consumer needs an object. Public access is blocked on
+every bucket.
+
+The S3 endpoint inside the cluster is `http://rustfs.rustfs.svc:9000`. Each
+consumer creates its own access key in RustFS and reads it from its own secret.
+The console is on port 9001 of the same Service. No route is created for it.
+
+### Limits
+
+- A single-volume RustFS cannot grow in place. The size is fixed when the claim is
+  created. Do not resize the claim. To get more space, create a new store on a bigger volume, copy the
+  objects to it, and move the consumers.
+- There is one replica. While the pod restarts or the volume is detached, the
+  store is not available.
+- Changing `rustfsBuckets` restarts the pod, because the buckets are set up at
+  start. Removing a bucket from the list does not delete it.
+
+### Back up with ZFS snapshots
+
+The platform does not take backups. If the block volume is a ZFS volume on the
+storage host, back it up there:
+
+1. Take a ZFS snapshot of the volume on a schedule, for example every hour.
+   Keep the last 24 and one a day for 14 days.
+2. Copy the snapshots to a second pool or host.
+3. To restore, clone a snapshot to a new volume and bind a new claim to it.
+
+A snapshot is crash-consistent: it holds the volume as it was at one moment,
+like a power cut. Verify a restore before you rely on it.
 
 ## How it works
 
