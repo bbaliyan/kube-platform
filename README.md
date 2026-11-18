@@ -72,17 +72,20 @@ Set these values:
 3. `rustfsCredentialsRemoteKey`: one entry in that store with the properties
    `access-key` and `secret-key`. No key is committed to this repo.
 
-The pod creates each bucket in `rustfsBuckets` when it starts. The default is
-one bucket, `substrate-snapshots`. Every bucket aborts unfinished multipart
-uploads after 1 day. Public access is blocked on every bucket.
+`rustfsBuckets` is empty by default. Create the bucket by hand, for example
+`substrate-snapshots`, with any S3 client and the root keys. The image can create
+buckets and set a rule that aborts unfinished multipart uploads after 1 day.
+But RustFS 1.0.6 bundles `rc` 0.1.37, which has no `bucket public-access-block`
+command. The start script then refuses to run and the pod restarts in a loop.
+Set `rustfsBuckets` to a list of `{name: ...}` only when the pinned image bundles
+`rc` 0.1.38 or later. Public access is then blocked on every bucket. Until then,
+no bucket has a public access block, and no bucket has the multipart rule unless
+you set it by hand.
 
 There is no object expiry. A suspended actor can rest for months, so an expiry
 rule could delete state that is still needed. Orphaned snapshot objects
 (agent-substrate issue 610) need a cleanup that the Substrate repo will document,
 not a blanket expiry.
-
-The root keys live in one entry of the secret store, with the properties
-`access-key` and `secret-key`.
 
 The image is RustFS 1.0.6. The kind overlay of agent-substrate tests 1.0.3.
 
@@ -92,9 +95,9 @@ The console is on port 9001 of the same Service. No route is created for it.
 
 ### Limits
 
-- A single-volume RustFS cannot grow in place. The size is fixed when the claim is
-  created. Do not resize the claim. To get more space, create a new store on a bigger volume, copy the
-  objects to it, and move the consumers.
+- A single-volume RustFS cannot grow in place. The size is fixed when the claim
+  is created. Do not resize the claim. To get more space, create a new store on a
+  bigger volume, copy the objects to it, and move the consumers.
 - There is one replica. While the pod restarts or the volume is detached, the
   store is not available.
 - Changing `rustfsBuckets` restarts the pod, because the buckets are set up at

@@ -1,6 +1,6 @@
 {{- /*
 The image reads /etc/rustfs/bootstrap at start: buckets.json lists the buckets,
-lifecycle/<bucket>.json holds the expiry rules of one bucket.
+lifecycle/<bucket>.json holds the lifecycle rules of one bucket.
 */}}
 {{- $names := list }}
 {{- range .Values.buckets }}{{ $names = append $names .name }}{{ end }}

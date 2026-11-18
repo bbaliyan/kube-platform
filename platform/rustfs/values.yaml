@@ -16,10 +16,10 @@ credentials:
   accessKeyProperty: access-key
   secretKeyProperty: secret-key
 
-# Each bucket is created at start. Every bucket aborts an unfinished multipart
+# Buckets created at start, each with a rule that aborts an unfinished multipart
 # upload after 1 day. There is no object expiry; see the README.
-buckets:
-  - name: substrate-snapshots
+# Empty by default: the image 1.0.6 cannot create buckets (see the README).
+buckets: []
 
 resources:
   requests:

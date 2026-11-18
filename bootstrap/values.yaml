@@ -56,8 +56,7 @@ rustfsStorageSize: 100Gi         # cannot grow in place; see the README
 rustfsSecretStoreName: ""        # a (Cluster)SecretStore that holds the root keys
 rustfsSecretStoreKind: ClusterSecretStore
 rustfsCredentialsRemoteKey: ""   # one entry with the properties access-key and secret-key
-rustfsBuckets:
-  - name: substrate-snapshots
+rustfsBuckets: []                # e.g. [{name: substrate-snapshots}]; see the README before you set it
 traefikExtraConfig: {}          # traefikExtraConfig.ports entries are merged into traefik's ports block (web/websecure are always present)
 
 # argocd-application-controller's memory limit; empty keeps the 2Gi of
