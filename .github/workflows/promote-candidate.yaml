@@ -117,7 +117,7 @@ jobs:
       - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
         with:
           # renovate: datasource=github-releases depName=helm/helm
-          version: v4.3.1
+          version: v4.3.2
       - run: pip install --quiet --require-hashes -r trusted/ci/requirements-promote.txt
       # stable is the genesis: a version bump is tested as the upgrade it is for a cluster that follows stable.
       - id: first
@@ -172,7 +172,7 @@ jobs:
       - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
         with:
           # renovate: datasource=github-releases depName=helm/helm
-          version: v4.3.1
+          version: v4.3.2
       - run: pip install --quiet --require-hashes -r trusted/ci/requirements-promote.txt
       - run: make render
         working-directory: candidate
@@ -299,7 +299,7 @@ jobs:
       - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
         with:
           # renovate: datasource=github-releases depName=helm/helm
-          version: v4.3.1
+          version: v4.3.2
       - run: pip install --quiet --require-hashes -r trusted/ci/requirements-promote.txt
       - run: git worktree add --detach ../stable-src "$STABLE_SHA"
         working-directory: candidate
