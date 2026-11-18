@@ -73,11 +73,18 @@ Set these values:
    `access-key` and `secret-key`. No key is committed to this repo.
 
 The pod creates each bucket in `rustfsBuckets` when it starts. The default is
-one bucket, `substrate-snapshots`. A bucket with `expireAfterDays` above 0 gets a
-rule that deletes every object after that many days. Every bucket also aborts
-unfinished multipart uploads after 1 day. The expiry days must be longer than
-the longest time that a consumer needs an object. Public access is blocked on
-every bucket.
+one bucket, `substrate-snapshots`. Every bucket aborts unfinished multipart
+uploads after 1 day. Public access is blocked on every bucket.
+
+There is no object expiry. A suspended actor can rest for months, so an expiry
+rule could delete state that is still needed. Orphaned snapshot objects
+(agent-substrate issue 610) need a cleanup that the Substrate repo will document,
+not a blanket expiry.
+
+The root keys live in one entry of the secret store, with the properties
+`access-key` and `secret-key`.
+
+The image is RustFS 1.0.6. The kind overlay of agent-substrate tests 1.0.3.
 
 The S3 endpoint inside the cluster is `http://rustfs.rustfs.svc:9000`. Each
 consumer creates its own access key in RustFS and reads it from its own secret.

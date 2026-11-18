@@ -12,7 +12,6 @@ data:
   buckets.json: {{ toJson $names | quote }}
   public-access-block.json: '{"block_public_acls":true,"ignore_public_acls":true,"block_public_policy":true,"restrict_public_buckets":true}'
   {{- range .Values.buckets }}
-  {{- $rule := dict "id" "expire" "status" "Enabled" "prefix" "" "abortIncompleteMultipartUploadDays" 1 }}
-  {{- if .expireAfterDays }}{{ $_ := set $rule "expiration" (dict "days" .expireAfterDays) }}{{ end }}
+  {{- $rule := dict "id" "abort-incomplete-uploads" "status" "Enabled" "prefix" "" "abortIncompleteMultipartUploadDays" 1 }}
   lifecycle-{{ .name }}.json: {{ dict "rules" (list $rule) | toJson | quote }}
   {{- end }}

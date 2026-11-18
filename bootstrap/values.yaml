@@ -58,7 +58,6 @@ rustfsSecretStoreKind: ClusterSecretStore
 rustfsCredentialsRemoteKey: ""   # one entry with the properties access-key and secret-key
 rustfsBuckets:
   - name: substrate-snapshots
-    expireAfterDays: 90          # 0 adds no expiry rule
 traefikExtraConfig: {}          # traefikExtraConfig.ports entries are merged into traefik's ports block (web/websecure are always present)
 
 # argocd-application-controller's memory limit; empty keeps the 2Gi of

@@ -16,12 +16,10 @@ credentials:
   accessKeyProperty: access-key
   secretKeyProperty: secret-key
 
-# Each bucket is created at start. expireAfterDays adds an expiry rule for every
-# object in it; 0 adds none. An unfinished multipart upload is always aborted
-# after 1 day.
+# Each bucket is created at start. Every bucket aborts an unfinished multipart
+# upload after 1 day. There is no object expiry; see the README.
 buckets:
   - name: substrate-snapshots
-    expireAfterDays: 90
 
 resources:
   requests:
