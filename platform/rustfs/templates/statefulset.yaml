@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rustfs
+spec:
+  # One replica on one volume. See the README for what this limits.
+  replicas: 1
+  serviceName: rustfs
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rustfs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rustfs
+      annotations:
+        # The bucket setup runs at start only, so a change must restart the pod.
+        checksum/bootstrap: {{ include (print $.Template.BasePath "/bootstrap-configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: rustfs
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          ports:
+            - name: s3
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          env:
+            - name: RUSTFS_VOLUMES
+              value: /data
+            - name: RUSTFS_BOOTSTRAP_ENDPOINT
+              value: http://rustfs.{{ .Release.Namespace }}.svc:9000
+          envFrom:
+            - secretRef:
+                name: rustfs-credentials
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: s3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: s3
+            initialDelaySeconds: 30
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: bootstrap
+              mountPath: /etc/rustfs/bootstrap
+              readOnly: true
+      volumes:
+        - name: bootstrap
+          configMap:
+            name: rustfs-bootstrap
+            items:
+              - key: buckets.json
+                path: buckets.json
+              - key: public-access-block.json
+                path: public-access-block.json
+              {{- range .Values.buckets }}
+              - key: lifecycle-{{ .name }}.json
+                path: lifecycle/{{ .name }}.json
+              {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: {{ required "storageClassName is required" .Values.storageClassName | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.storageSize }}

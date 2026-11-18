@@ -1,0 +1,32 @@
+image:
+  repository: rustfs/rustfs
+  # The digest pins the multi-arch index (amd64 and arm64) of the tag.
+  tag: 1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a
+
+# The StorageClass of the one data volume. A consumer sets it to a block class.
+storageClassName: ""
+storageSize: 100Gi
+
+# External Secrets reference. The store holds one entry with two properties.
+secretStore:
+  name: ""
+  kind: ClusterSecretStore
+credentials:
+  remoteKey: ""
+  accessKeyProperty: access-key
+  secretKeyProperty: secret-key
+
+# Buckets created at start, each with a rule that aborts an unfinished multipart
+# upload after 1 day. There is no object expiry; see the README.
+# Empty by default: the image 1.0.6 cannot create buckets (see the README).
+buckets: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 2Gi
+
+nodeSelector: {}
+priorityClassName: ""

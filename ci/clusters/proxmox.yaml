@@ -49,6 +49,14 @@ spec:
             value: "https://git.example.com/"
           - name: repoCredsUsername
             value: "deploy-token"
+          - name: rustfsEnabled
+            value: "true"
+          - name: rustfsStorageClassName
+            value: "block-iscsi"
+          - name: rustfsSecretStoreName
+            value: "cluster-secrets"
+          - name: rustfsCredentialsRemoteKey
+            value: "/kube/cluster-1/rustfs"
           - name: workloadsRepoURL
             value: "https://github.com/bbaliyan/kube-platform.git"
           - name: workloadsRevision

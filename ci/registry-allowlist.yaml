@@ -16,7 +16,8 @@
     - longhornio/
     - curlimages/
     - kiwigrid/
-  reason: Official images and the projects that publish to Docker Hub under their own organisation (Grafana Labs, Rancher, Longhorn, curl, kiwigrid).
+    - rustfs/
+  reason: Official images and the projects that publish to Docker Hub under their own organisation (Grafana Labs, Rancher, Longhorn, curl, kiwigrid, RustFS).
 - registry: quay.io
   repositories:
     - argoproj/

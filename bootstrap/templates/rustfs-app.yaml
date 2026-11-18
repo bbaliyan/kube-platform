@@ -1,0 +1,43 @@
+{{- if .Values.rustfsEnabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rustfs
+  namespace: argocd
+  annotations:
+    # After the storage provisioners (wave 0) and External Secrets.
+    argocd.argoproj.io/sync-wave: "2"
+    kube-stack/keep-resources-on-delete: holds the data volume claim of the S3 store
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.platformRepoURL | quote }}
+    targetRevision: {{ .Values.platformRevision | quote }}
+    path: platform/rustfs
+    helm:
+      valuesObject:
+        storageClassName: {{ required "rustfsStorageClassName is required when rustfsEnabled is true" .Values.rustfsStorageClassName | quote }}
+        storageSize: {{ .Values.rustfsStorageSize | quote }}
+        secretStore:
+          name: {{ required "rustfsSecretStoreName is required when rustfsEnabled is true" .Values.rustfsSecretStoreName | quote }}
+          kind: {{ .Values.rustfsSecretStoreKind | quote }}
+        credentials:
+          remoteKey: {{ required "rustfsCredentialsRemoteKey is required when rustfsEnabled is true" .Values.rustfsCredentialsRemoteKey | quote }}
+        buckets:
+          {{- toYaml .Values.rustfsBuckets | nindent 10 }}
+        priorityClassName: platform
+        {{- with .Values.platformNodeSelector }}
+        nodeSelector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: rustfs
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+{{- end }}
