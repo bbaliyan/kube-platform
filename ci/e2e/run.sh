@@ -93,8 +93,9 @@ python3 ci/e2e/point-at-commit.py ci/clusters/kind.yaml "$revision" | kubectl ap
 # The RustFS Application reads its root keys through a store that ci/e2e/ makes,
 # from a Secret of random values. The store needs External Secrets' CRDs, so
 # wait for them; its webhook may need a few tries.
+# kubectl wait fails with an accessor error while the new CRD has no status yet, so retry it.
 kubectl wait --for=create crd/clustersecretstores.external-secrets.io --timeout=10m
-kubectl wait --for=condition=Established crd/clustersecretstores.external-secrets.io --timeout=1m
+for _ in $(seq 60); do kubectl wait --for=condition=Established crd/clustersecretstores.external-secrets.io --timeout=5s >/dev/null 2>&1 && break; sleep 2; done
 for _ in $(seq 60); do kubectl apply -f ci/e2e/rustfs-store.yaml >/dev/null 2>&1 && break; sleep 5; done
 kubectl apply -f ci/e2e/rustfs-store.yaml >/dev/null
 kubectl -n rustfs-e2e create secret generic rustfs-root   --from-literal=access-key="e2e$(openssl rand -hex 6)"   --from-literal=secret-key="$(openssl rand -hex 20)"
