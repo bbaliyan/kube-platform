@@ -27,7 +27,6 @@ kind_bin="${KIND:-$tmp/kind}"
 report_state() {
   kubectl get applications -n argocd || true
   kubectl get pods -A -o wide | awk 'NR == 1 || $4 != "Completed" && split($3, r, "/") && r[1] != r[2]' || true
-  kubectl -n rustfs logs job/rustfs-smoke --tail=50 || true
   kubectl get events -A --field-selector type=Warning --sort-by=.lastTimestamp | tail -50 || true
   "$kind_bin" export logs kind-logs >/dev/null || true
 }
@@ -82,7 +81,7 @@ if [ -n "${GENESIS_REF:-}" ]; then
   make boot-renders PLATFORM_VERSIONS="$genesis_versions" BOOT_RENDER_DIR="$tmp/genesis-renders" >/dev/null
   argocd_boot="$tmp/genesis-renders/argocd.yaml"
 fi
-cat "$argocd_boot" bootstrap/rendered/argocd.yaml ci/e2e/rustfs-smoke.yaml | KIND="$kind_bin" ci/e2e/preload-images.sh
+cat "$argocd_boot" bootstrap/rendered/argocd.yaml | KIND="$kind_bin" ci/e2e/preload-images.sh
 kubectl apply --server-side --force-conflicts -f "$argocd_boot" >/dev/null
 kubectl -n argocd rollout status deployment,statefulset --timeout=5m
 
@@ -105,8 +104,19 @@ kubectl -n rustfs-e2e create secret generic rustfs-root   --from-literal=access-
 python3 ci/e2e/wait.py 600
 
 # RustFS serves the S3 API with the keys External Secrets made.
-kubectl apply -f ci/e2e/rustfs-smoke.yaml
-kubectl -n rustfs wait --for=condition=complete job/rustfs-smoke --timeout=3m
+# Create a bucket, put one object and get it back, as the consumer's bucket Job does.
+# No client image: curl signs the S3 requests itself, so the candidate adds no image to scan.
+kubectl -n rustfs port-forward service/rustfs 19000:9000 >/dev/null &
+port_forward=$!
+trap 'kill "$port_forward" 2>/dev/null || true; cleanup' EXIT
+rustfs_key="$(kubectl -n rustfs get secret rustfs-credentials -o jsonpath='{.data.RUSTFS_ACCESS_KEY}' | base64 -d)"
+rustfs_secret="$(kubectl -n rustfs get secret rustfs-credentials -o jsonpath='{.data.RUSTFS_SECRET_KEY}' | base64 -d)"
+s3() { curl -sSf --retry 10 --retry-all-errors --retry-connrefused --user "$rustfs_key:$rustfs_secret" --aws-sigv4 aws:amz:us-east-1:s3 "$@"; }
+s3 -X PUT http://localhost:19000/e2e-smoke
+s3 -X PUT --data "hello rustfs" http://localhost:19000/e2e-smoke/hello
+test "$(s3 http://localhost:19000/e2e-smoke/hello)" = "hello rustfs"
+kill "$port_forward"
+trap cleanup EXIT
 
 # Cilium's load balancer, Traefik serving the platform's wildcard certificate
 # (trusted here as its own CA, being self-signed), and the platform's route to
