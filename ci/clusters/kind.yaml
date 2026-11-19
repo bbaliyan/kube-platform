@@ -34,6 +34,12 @@ spec:
         valuesObject:
           ciliumOperatorReplicas: 1
           hubbleEnabled: true
+          # The opt-in S3 store. ci/e2e/rustfs-store.yaml makes the store and
+          # run.sh the keys. No buckets: the pinned image cannot create them.
+          rustfsEnabled: true
+          rustfsStorageClassName: local-path
+          rustfsSecretStoreName: e2e-store
+          rustfsCredentialsRemoteKey: rustfs-root
           observabilityExtraHelmValues:
             # The kind node image has no node_exporter.process SELinux module;
             # a type that is not loaded stops the pod from starting.

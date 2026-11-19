@@ -1,0 +1,60 @@
+# The secret store behind the RustFS Application in ci/clusters/kind.yaml. A
+# ClusterSecretStore with the kubernetes provider reads the root keys from the
+# Secret rustfs-root, which ci/e2e/run.sh creates from random values at run
+# time. No key is committed.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rustfs-e2e
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: store-reader
+  namespace: rustfs-e2e
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: store-reader
+  namespace: rustfs-e2e
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch]
+  - apiGroups: [authorization.k8s.io]
+    resources: [selfsubjectrulesreviews]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: store-reader
+  namespace: rustfs-e2e
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: store-reader
+subjects:
+  - kind: ServiceAccount
+    name: store-reader
+    namespace: rustfs-e2e
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: e2e-store
+spec:
+  provider:
+    kubernetes:
+      remoteNamespace: rustfs-e2e
+      server:
+        caProvider:
+          type: ConfigMap
+          name: kube-root-ca.crt
+          key: ca.crt
+          namespace: rustfs-e2e
+      auth:
+        serviceAccount:
+          name: store-reader
+          namespace: rustfs-e2e
