@@ -29,7 +29,7 @@ k8sVersion: v1.37.2+rke2r1
 argocdVersion: 10.18.0
 
 # renovate: datasource=helm depName=cilium registryUrl=https://helm.cilium.io/
-ciliumVersion: 1.20.4
+ciliumVersion: 1.20.5
 
 # renovate: datasource=helm depName=cluster-autoscaler registryUrl=https://kubernetes.github.io/autoscaler
 clusterAutoscalerVersion: "9.60.0"
