@@ -7,7 +7,7 @@ metadata:
   name: rustfs-smoke
   namespace: rustfs
 spec:
-  backoffLimit: 3
+  backoffLimit: 0
   template:
     spec:
       restartPolicy: Never
@@ -22,7 +22,7 @@ spec:
               echo "hello rustfs" > /tmp/in
               aws s3 cp /tmp/in s3://e2e-smoke/hello
               aws s3 cp s3://e2e-smoke/hello /tmp/out
-              cmp /tmp/in /tmp/out
+              test "$(cat /tmp/out)" = "hello rustfs"
           env:
             - name: AWS_ENDPOINT_URL
               value: http://rustfs.rustfs.svc:9000
