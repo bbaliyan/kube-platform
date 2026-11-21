@@ -1,7 +1,6 @@
 prometheus:
   retention: 30d
   retentionSize: 34GB
-  otlpReceiver: true
   dropUnusedControlPlaneMetrics: true
   extraDropMetrics: ["etcd_request_duration_seconds_(sum|count)", "foo_.*"]
   storage: {size: 40Gi, storageClassName: fast}

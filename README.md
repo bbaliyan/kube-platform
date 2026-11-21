@@ -267,7 +267,6 @@ retention. Every value is optional. The defaults are shown below.
 |---|---|---|
 | `prometheus.retention` | `7d` | How long Prometheus keeps metrics. |
 | `prometheus.retentionSize` | empty | Size limit. Prometheus drops its oldest data above it. Empty means no limit. |
-| `prometheus.otlpReceiver` | `false` | Turns on the OTLP receiver of Prometheus, at `/api/v1/otlp` on port 9090. The receiver has no login, so allow only trusted clients. |
 | `prometheus.storage.size` | `20Gi` | Prometheus volume size. |
 | `alertmanager.storage.size` | `2Gi` | Alertmanager volume size. |
 | `grafana.storage.size` | `5Gi` | Grafana volume size. |

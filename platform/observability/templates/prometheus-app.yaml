@@ -233,9 +233,6 @@ spec:
             priorityClassName: platform
             {{- include "platform.nodeSelector" . | nindent 12 }}
             retention: {{ .Values.prometheus.retention }}
-{{- if .Values.prometheus.otlpReceiver }}
-            enableOTLPReceiver: true
-{{- end }}
 {{- if .Values.prometheus.retentionSize }}
             retentionSize: {{ .Values.prometheus.retentionSize | quote }}
 {{- end }}
