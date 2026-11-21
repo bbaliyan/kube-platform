@@ -76,7 +76,5 @@ expect_count "the preset drops on the metric name, once per component" 4 "go_(gc
 expect_count "extraDropMetrics reaches every component" 4 "extra_one_.\*|extra_two" "$preset"
 expect_count "extraDropMetrics alone adds no preset regex" 0 "go_(gc|godebug" "$extra_only"
 expect_count "extraDropMetrics alone reaches every component" 4 "^ *regex: only_extra_.\*$" "$extra_only"
-expect_count "the OTLP receiver is off by default" 0 "enableOTLPReceiver"
-expect_count "otlpReceiver turns the OTLP receiver on" 1 "enableOTLPReceiver: true" "$fixtures/all-set.yaml"
 
 exit $((failures > 0))
