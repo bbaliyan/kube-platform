@@ -19,6 +19,9 @@ prometheus:
   # Drops the oldest blocks before the volume fills, for example "17GB" on a
   # 20Gi volume (about 85%). Empty means no size limit.
   retentionSize: ""
+  # Turns on the OTLP receiver. Workloads then push OpenTelemetry metrics to
+  # http://prometheus-prometheus.prometheus.svc:9090/api/v1/otlp. It has no login.
+  otlpReceiver: false
   # Drops the series that no stock rule or dashboard uses from the API server, etcd,
   # controller manager and scheduler. See "Dropping unused metrics" in the README.
   dropUnusedControlPlaneMetrics: false
