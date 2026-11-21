@@ -28,6 +28,9 @@
         "retentionSize": {
           "type": "string"
         },
+        "otlpReceiver": {
+          "type": "boolean"
+        },
         "dropUnusedControlPlaneMetrics": {
           "type": "boolean"
         },
