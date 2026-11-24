@@ -6,6 +6,26 @@ configs:
   cm:
     timeout.reconciliation: 30s
     timeout.reconciliation.jitter: 10s
+    # The health of a child Application is the health of its resources, so a sync wave
+    # of Applications waits for the previous wave. Argo CD does not do this by default.
+    # An Application with no automated sync and no resources yet is Missing by design
+    # (for example system-upgrade-plans, which an operator syncs by hand), and counts as healthy.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil and obj.status.health ~= nil then
+        hs.status = obj.status.health.status
+        if obj.status.health.message ~= nil then
+          hs.message = obj.status.health.message
+        end
+        local automated = obj.spec ~= nil and obj.spec.syncPolicy ~= nil and obj.spec.syncPolicy.automated ~= nil
+        if hs.status == "Missing" and not automated then
+          hs.status = "Healthy"
+          hs.message = "Not synced yet: this Application has no automated sync"
+        end
+      end
+      return hs
   params:
     server.insecure: "true"
 # The chart sets no resources. Requests are what a small cluster uses
