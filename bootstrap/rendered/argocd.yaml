@@ -368,6 +368,22 @@ data:
   application.instanceLabelKey: argocd.argoproj.io/instance
   application.sync.impersonation.enabled: "false"
   exec.enabled: "false"
+  resource.customizations.health.argoproj.io_Application: |
+    hs = {}
+    hs.status = "Progressing"
+    hs.message = ""
+    if obj.status ~= nil and obj.status.health ~= nil then
+      hs.status = obj.status.health.status
+      if obj.status.health.message ~= nil then
+        hs.message = obj.status.health.message
+      end
+      local automated = obj.spec ~= nil and obj.spec.syncPolicy ~= nil and obj.spec.syncPolicy.automated ~= nil
+      if hs.status == "Missing" and not automated then
+        hs.status = "Healthy"
+        hs.message = "Not synced yet: this Application has no automated sync"
+      end
+    end
+    return hs
   resource.customizations.ignoreResourceUpdates.ConfigMap: |
     jqPathExpressions:
       # Ignore the cluster-autoscaler status
@@ -35921,7 +35937,7 @@ spec:
     metadata:
       annotations:
         checksum/cmd-params: 7169a66dffe48e8cacc4d5fee2ffe558d692709d8ddaf19ef44fa89b031b0fe5
-        checksum/cm: 149187281eb686543a2750669d0d53ae63181dcc18a1b1f683b282f3768a1297
+        checksum/cm: 9fcdfcc40f4261867606b6a7f6c0cbf3785ddb39ec6f7ee21266e52edfde08e6
       labels:
         app.kubernetes.io/component: repo-server
         app.kubernetes.io/instance: argocd
@@ -36398,7 +36414,7 @@ spec:
     metadata:
       annotations:
         checksum/cmd-params: 7169a66dffe48e8cacc4d5fee2ffe558d692709d8ddaf19ef44fa89b031b0fe5
-        checksum/cm: 149187281eb686543a2750669d0d53ae63181dcc18a1b1f683b282f3768a1297
+        checksum/cm: 9fcdfcc40f4261867606b6a7f6c0cbf3785ddb39ec6f7ee21266e52edfde08e6
       labels:
         app.kubernetes.io/component: server
         app.kubernetes.io/instance: argocd
@@ -37169,7 +37185,7 @@ spec:
     metadata:
       annotations:
         checksum/cmd-params: 7169a66dffe48e8cacc4d5fee2ffe558d692709d8ddaf19ef44fa89b031b0fe5
-        checksum/cm: 149187281eb686543a2750669d0d53ae63181dcc18a1b1f683b282f3768a1297
+        checksum/cm: 9fcdfcc40f4261867606b6a7f6c0cbf3785ddb39ec6f7ee21266e52edfde08e6
       labels:
         app.kubernetes.io/component: application-controller
         app.kubernetes.io/instance: argocd
