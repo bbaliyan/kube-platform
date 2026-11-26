@@ -41,10 +41,10 @@ change.
 
 ## Application finalizers
 
-Every Application in `bootstrap/` and `platform/` must either carry the
-`resources-finalizer.argocd.argoproj.io` finalizer or opt out. `make test-commit`
-runs `ci/check-app-finalizers.sh` on the rendered output and fails if one does
-neither, or both.
+Every Application and AppProject in `bootstrap/` and `platform/` must either
+carry the `resources-finalizer.argocd.argoproj.io` finalizer or opt out.
+`make test-commit` runs the shared `argocd-removal.sh` check of the kube-devenv
+image on the rendered output and fails if one does neither, or both.
 
 The finalizer makes Argo CD delete what an Application deployed when the
 Application is deleted or pruned. Without it, the Application object goes and
