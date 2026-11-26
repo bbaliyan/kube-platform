@@ -32,7 +32,7 @@ BASE_REF ?= $(shell git rev-parse --verify --quiet origin/main)
 export REQUIRE_SIGNOFF := 0
 
 CLUSTERS     := $(basename $(notdir $(wildcard ci/clusters/*.yaml ci/clusters/*.yml)))
-TEST_SCRIPTS := tests/preload-images.sh tests/check-app-finalizers.sh tests/check-imds-guard.sh tests/check-pod-identity.sh \
+TEST_SCRIPTS := tests/preload-images.sh tests/check-imds-guard.sh tests/check-pod-identity.sh \
 	tests/check-observability-values.sh tests/check-promotion-record.py tests/check-manifest-risk.py
 
 # nproc ignores the CPU quota of a container (docker run --cpus), so read the
@@ -85,7 +85,7 @@ $(CLUSTERS:%=render/%): render/%: | clean-out
 app-finalizers: $(CLUSTERS:%=app-finalizers/%)
 
 $(CLUSTERS:%=app-finalizers/%): app-finalizers/%: render/%
-	find out/head/$* -mindepth 1 -maxdepth 1 -type d ! -name _root -print0 | xargs -0 ci/check-app-finalizers.sh
+	find out/head/$* -mindepth 1 -maxdepth 1 -type d ! -name _root -print0 | xargs -0 $(CHECKS)/argocd-removal.sh
 
 # Each cluster is validated against the CRDs that its own charts ship.
 schemas: $(CLUSTERS:%=schemas/%)
