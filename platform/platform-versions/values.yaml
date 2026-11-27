@@ -32,7 +32,7 @@ argocdVersion: 10.19.1
 ciliumVersion: 1.20.5
 
 # renovate: datasource=helm depName=cluster-autoscaler registryUrl=https://kubernetes.github.io/autoscaler
-clusterAutoscalerVersion: "9.60.0"
+clusterAutoscalerVersion: "9.60.1"
 
 # renovate: datasource=helm depName=aws-cloud-controller-manager registryUrl=https://kubernetes.github.io/cloud-provider-aws
 awsCloudControllerManagerVersion: "0.0.12"

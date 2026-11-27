@@ -1,7 +1,7 @@
 image:
   repository: rustfs/rustfs
   # The digest pins the multi-arch index (amd64 and arm64) of the tag.
-  tag: 1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a
+  tag: 1.0.7@sha256:69bd3c4d8d79b74723bfd68c9fbd9085155d4d4b44a5a136d87502f3075cc68c
 
 # The StorageClass of the one data volume. A consumer sets it to a block class.
 storageClassName: ""
